@@ -3,7 +3,8 @@
 ## Ubicación Estratégica de Cadenas de Frío mediante Teoría de Grafos — Puerto Gaitán, Meta, Colombia
 
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org)
-[![NetworkX](https://img.shields.io/badge/NetworkX-3.x-orange)](https://networkx.org)
+[![Folium](https://img.shields.io/badge/Folium-0.20-77B829?logo=leaflet&logoColor=white)](https://python-visualization.github.io/folium/)
+[![Tests](https://img.shields.io/badge/Tests-30%20passed-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Funcional-brightgreen)]()
 
@@ -59,7 +60,10 @@ Proyecto/
 │   ├── visualization/           # Visualización de resultados
 │   │   ├── __init__.py
 │   │   ├── graph_plotter.py     # Dibujar grafos con matplotlib
-│   │   └── map_renderer.py      # Renderizar mapas geográficos
+│   │   ├── map_renderer.py      # Renderizar mapas geográficos
+│   │   ├── folium_map.py        # Mapa interactivo HTML (Folium)
+│   │   ├── felt_exporter.py     # Exportación GeoJSON para Felt.com
+│   │   └── route_geometry.py    # Geometrías reales via OSRM
 │   │
 │   └── utils/                   # Utilidades
 │       ├── __init__.py
@@ -81,11 +85,14 @@ Proyecto/
 │   │   └── aristas.csv          # Conexiones entre nodos
 │   └── output/                  # Resultados generados
 │
-├── tests/                       # Pruebas unitarias
+├── tests/                       # Pruebas unitarias (30 tests)
 │   ├── __init__.py
-│   ├── test_grafo.py
-│   ├── test_dijkstra.py
-│   └── test_facility_location.py
+│   ├── test_grafo.py            # 7 tests — modelos de datos
+│   ├── test_dijkstra.py         # 5 tests — caminos mínimos
+│   ├── test_bellman_ford.py     # 5 tests — verificación cruzada
+│   ├── test_floyd_warshall.py   # 5 tests — todos los pares
+│   ├── test_cold_chain.py       # 5 tests — simulación de frío
+│   └── test_facility_location.py# 3 tests — localización óptima
 │
 └── docs/                        # Documentación
     ├── modelo_matematico.md     # Formulación matemática
@@ -187,6 +194,9 @@ python tests/test_facility_location.py
 | 5 | Simulación de deterioro del pescado | Cadena de frío |
 | 6 | Comparación de escenarios (local y Bogotá) | Evaluador |
 | 7 | Visualización del grafo y exportación | matplotlib |
+| 8 | Exportación GeoJSON + ZIP para Felt.com | json / zipfile |
+| 9 | Obtención de geometrías reales de carreteras | OSRM API |
+| 10 | Mapa interactivo HTML con rutas reales | Folium |
 
 ---
 
@@ -201,6 +211,8 @@ Al ejecutar `python main.py`, el programa produce:
 - **Simulación** de pérdida de pescado por ruta
 - **Tabla comparativa** de escenarios: sin frío vs con 1 centro vs múltiples centros
 - **Gráfico** `data/output/grafo_logistico.png` con la red y ruta óptima destacada
+- **Mapa interactivo** `data/output/mapa_interactivo.html` con rutas siguiendo carreteras reales (OSRM)
+- **GeoJSON** `data/output/nodos_red.geojson` y `ruta_dijkstra.geojson` para visualización externa
 - **CSV exportados** en `data/output/`
 
 ---
