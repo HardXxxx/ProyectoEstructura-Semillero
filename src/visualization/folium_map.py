@@ -27,6 +27,9 @@ from ..models.grafo_logistico import GrafoLogistico
 from ..utils.data_loader import OUTPUT_DIR, SHP_DIR
 from ..utils.constants import TipoNodo
 
+# Ruta al GeoJSON de puntos de campo
+_GEOJSON_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "geojson"
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  CONFIGURACIÓN DE COLORES Y ICONOS POR TIPO DE NODO
@@ -112,6 +115,9 @@ def generar_mapa_interactivo(
 
     # ── Capa de ríos (si existe shapefile) ───────────────────
     _agregar_capa_rios(mapa)
+
+    # ── Capa de puntos de campo (GeoJSON externo) ─────────
+    _agregar_puntos_campo(mapa)
 
     # ── Capa de aristas (todas las conexiones) ───────────────
     capa_aristas = folium.FeatureGroup(name="🔗 Conexiones del Grafo")
@@ -371,6 +377,11 @@ def _agregar_leyenda(mapa: folium.Map) -> None:
         ("#E91E63", "Mercado / Venta"),
         ("#D32F2F", "Ruta Óptima"),
         ("#9E9E9E", "Conexiones"),
+        ("#F39C12", "Acopio (campo)"),
+        ("#E74C3C", "Deterioro (campo)"),
+        ("#27AE60", "Hábitat (campo)"),
+        ("#3498DB", "Muelle (campo)"),
+        ("#8E44AD", "Venta (campo)"),
     ]
 
     legend_html = """
@@ -389,4 +400,86 @@ def _agregar_leyenda(mapa: folium.Map) -> None:
     legend_html += "</div>"
 
     mapa.get_root().html.add_child(folium.Element(legend_html))
+
+
+def _agregar_puntos_campo(mapa: folium.Map) -> None:
+    """
+    Carga los puntos de campo desde data/geojson/puntos_campo.geojson
+    y los agrega como capas categorizadas al mapa.
+
+    Categorías:
+      A — Acopio (naranja)
+      D — Deterioro (rojo)
+      H — Hábitat (verde)
+      M — Muelle (azul)
+      V — Venta (púrpura)
+    """
+    geojson_path = _GEOJSON_DIR / "puntos_campo.geojson"
+    if not geojson_path.exists():
+        return
+
+    try:
+        with open(geojson_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return
+
+    features = data.get("features", [])
+    if not features:
+        return
+
+    # Configuración visual por categoría
+    categorias_config = {
+        "A": {"nombre": "📦 Puntos de Acopio (campo)",    "color": "#F39C12", "icono": "warehouse"},
+        "D": {"nombre": "🌡️ Zonas de Deterioro (campo)", "color": "#E74C3C", "icono": "warning"},
+        "H": {"nombre": "🌿 Hábitat Protegido (campo)",   "color": "#27AE60", "icono": "leaf"},
+        "M": {"nombre": "⚓ Muelles (campo)",             "color": "#3498DB", "icono": "anchor"},
+        "V": {"nombre": "🏪 Puntos de Venta (campo)",     "color": "#8E44AD", "icono": "shop"},
+    }
+
+    # Agrupar features por categoría
+    grupos: Dict[str, list] = {}
+    for feat in features:
+        cat = feat.get("properties", {}).get("categoria", "?")
+        grupos.setdefault(cat, []).append(feat)
+
+    # Crear una capa por categoría
+    for cat, feats in sorted(grupos.items()):
+        config = categorias_config.get(cat, {
+            "nombre": f"❓ {cat} (campo)",
+            "color": "#757575",
+            "icono": "circle",
+        })
+
+        capa = folium.FeatureGroup(name=config["nombre"], show=False)
+
+        for feat in feats:
+            props = feat.get("properties", {})
+            coords = feat.get("geometry", {}).get("coordinates", [0, 0])
+            lat, lon = coords[1], coords[0]  # GeoJSON es [lon, lat]
+
+            # Popup HTML informativo
+            popup_html = (
+                f"<b>{props.get('title', props.get('id', ''))}</b><br>"
+                f"<i>{props.get('tipo', cat)}</i><br>"
+                f"📍 {props.get('lat_dms', f'{lat:.4f}')}, "
+                f"{props.get('lon_dms', f'{lon:.4f}')}"
+            )
+
+            folium.CircleMarker(
+                location=[lat, lon],
+                radius=6,
+                color=config["color"],
+                fill=True,
+                fill_color=config["color"],
+                fill_opacity=0.7,
+                weight=2,
+                popup=folium.Popup(popup_html, max_width=250),
+                tooltip=props.get("title", props.get("id", "")),
+            ).add_to(capa)
+
+        capa.add_to(mapa)
+
+    print(f"  [✓] {len(features)} puntos de campo cargados "
+          f"({', '.join(f'{k}:{len(v)}' for k, v in sorted(grupos.items()))})")
 
