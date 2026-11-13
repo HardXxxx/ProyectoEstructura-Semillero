@@ -83,6 +83,8 @@ Proyecto/
 │   │   ├── nodos_centros.csv    # Centros poblados candidatos
 │   │   ├── nodos_destinos.csv   # Mercados de destino
 │   │   └── aristas.csv          # Conexiones entre nodos
+│   ├── geojson/                 # Datos georreferenciados
+│   │   └── puntos_campo.geojson # 49 puntos de campo (acopio, deterioro, hábitat, muelle, venta)
 │   └── output/                  # Resultados generados
 │
 ├── tests/                       # Pruebas unitarias (30 tests)
@@ -214,6 +216,28 @@ Al ejecutar `python main.py`, el programa produce:
 - **Mapa interactivo** `data/output/mapa_interactivo.html` con rutas siguiendo carreteras reales (OSRM)
 - **GeoJSON** `data/output/nodos_red.geojson` y `ruta_dijkstra.geojson` para visualización externa
 - **CSV exportados** en `data/output/`
+
+---
+
+## 🗺️ Mapa Interactivo
+
+El mapa HTML (`data/output/mapa_interactivo.html`) incluye **11 capas activables**:
+
+| Capa | Descripción | Activa por defecto |
+|------|-------------|--------------------|
+| 🐟 Punto de Pesca | 7 nodos de captura del grafo | ✅ |
+| 📦 Centro de Acopio | 3 nodos de acopio del grafo | ✅ |
+| ❄️ Red de Frío | 3 centros candidatos del grafo | ✅ |
+| 🏪 Mercados | 3 mercados destino del grafo | ✅ |
+| 🔗 Conexiones | 26 aristas con geometría de carreteras reales | ✅ |
+| 🛤️ Ruta Óptima | Ruta Dijkstra animada (P01 → ... → Bogotá) | ✅ |
+| 📦 Acopio (campo) | 14 puntos de acopio georeferenciados | ⬜ |
+| 🌡️ Deterioro (campo) | 11 zonas de deterioro identificadas | ⬜ |
+| 🌿 Hábitat (campo) | 14 zonas de hábitat protegido | ⬜ |
+| ⚓ Muelles (campo) | 8 puntos de infraestructura fluvial | ⬜ |
+| 🏪 Venta (campo) | 2 puntos de venta adicionales | ⬜ |
+
+Las rutas siguen **carreteras reales** obtenidas de OpenStreetMap via OSRM, no líneas rectas.
 
 ---
 

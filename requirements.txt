@@ -1,25 +1,17 @@
-# === Dependencias principales ===
-networkx>=3.1
-matplotlib>=3.7
-numpy>=1.24
+# ═══════════════════════════════════════════════════════════
+#  DEPENDENCIAS — Cadena de Frío Puerto Gaitán
+# ═══════════════════════════════════════════════════════════
 
-# === Geoespacial ===
-geopandas>=0.13
-shapely>=2.0
-pyproj>=3.5
-fiona>=1.9
-
-# === Datos ===
-pandas>=2.0
-
-# === Optimización ===
-scipy>=1.11
-pulp>=2.7
+# === Obligatorias (el proyecto no funciona sin estas) ===
+matplotlib>=3.7         # Visualización del grafo (graph_plotter.py)
+numpy>=1.24             # Matrices para Floyd-Warshall
+folium>=0.14            # Mapa interactivo HTML (folium_map.py)
 
 # === Testing ===
-pytest>=7.4
+pytest>=7.4             # Ejecutar las 30 pruebas unitarias
 
-# === Utilidades ===
-tabulate>=0.9
-colorama>=0.4
-
+# === Opcionales (mejoran funcionalidades extra) ===
+# geopandas>=0.13       # Capa de ríos en el mapa (shapefile → GeoJSON)
+# shapely>=2.0          # Geometrías para rutas fluviales
+# fiona>=1.9            # Backend de lectura de shapefiles
+# pyproj>=3.5           # Proyecciones geográficas
