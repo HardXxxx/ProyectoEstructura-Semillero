@@ -24,6 +24,10 @@ Uso:
 import os
 import sys
 
+# Evitar error de memoria de OpenBLAS con numpy/matplotlib en Python 3.14
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+
 # ── Asegurar que el paquete src sea importable ────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
@@ -40,6 +44,7 @@ from src.optimization.scenario_evaluator import EvaluadorEscenarios
 from src.utils.data_loader import cargar_nodos_csv, cargar_aristas_csv, guardar_resultados_csv
 from src.utils.constants import TipoNodo, TIEMPO_MAX_SIN_FRIO_H
 from src.visualization.felt_exporter import exportar_para_felt
+from src.visualization.folium_map import generar_mapa_interactivo
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -510,6 +515,19 @@ def main():
         nombre_ruta=f"Ruta Óptima: {pesca[0].nombre} → Bogotá"
         if ruta_felt else "Ruta Óptima",
     )
+
+    # 9. Mapa interactivo HTML (Folium)
+    try:
+        ruta_mapa = generar_mapa_interactivo(
+            grafo,
+            ruta_optima=ruta_felt,
+            nombre_ruta=f"Ruta Óptima: {pesca[0].nombre} → Bogotá"
+            if ruta_felt else "Ruta Óptima",
+            abrir_navegador=False,
+        )
+        print(f"  → Abre en tu navegador: {ruta_mapa}")
+    except Exception as e:
+        print(f"  [!] No se pudo generar mapa interactivo: {e}")
 
     print("\n  ✅ Ejecución completada exitosamente.\n")
 
