@@ -39,6 +39,7 @@ from src.optimization.cold_chain import SimuladorCadenaFrio
 from src.optimization.scenario_evaluator import EvaluadorEscenarios
 from src.utils.data_loader import cargar_nodos_csv, cargar_aristas_csv, guardar_resultados_csv
 from src.utils.constants import TipoNodo, TIEMPO_MAX_SIN_FRIO_H
+from src.visualization.felt_exporter import exportar_para_felt
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -489,6 +490,26 @@ def main():
     ruta_a = guardar_resultados_csv(aristas_export, "aristas_resultado.csv")
     print(f"  [✓] Nodos exportados:   {ruta_n}")
     print(f"  [✓] Aristas exportadas: {ruta_a}")
+
+    # 8. Exportación para Felt.com (GeoJSON + ZIP)
+    pesca = grafo.puntos_pesca()
+    mercados = grafo.mercados()
+    ruta_felt = None
+    if pesca and mercados:
+        # Calcular ruta óptima completa: primer punto de pesca → Bogotá
+        destino_felt = next(
+            (m.id for m in mercados if "BOG" in m.id.upper()),
+            mercados[-1].id,
+        )
+        _, ruta_felt = dijkstra(grafo, pesca[0].id, destino_felt,
+                                criterio="tiempo_h")
+
+    exportar_para_felt(
+        grafo,
+        ruta_optima=ruta_felt,
+        nombre_ruta=f"Ruta Óptima: {pesca[0].nombre} → Bogotá"
+        if ruta_felt else "Ruta Óptima",
+    )
 
     print("\n  ✅ Ejecución completada exitosamente.\n")
 
