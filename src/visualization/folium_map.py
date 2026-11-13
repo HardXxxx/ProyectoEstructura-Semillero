@@ -4,11 +4,14 @@ folium_map.py — Mapa interactivo HTML con Folium.
 Genera un mapa web interactivo que se abre en el navegador,
 sin necesidad de cuentas externas ni servicios de pago.
 
+Las rutas siguen las carreteras y ríos reales obtenidos
+desde OSRM (Open Source Routing Machine) y el shapefile de ríos.
+
 Capas generadas:
   1. Nodos de la red — marcadores categorizados por tipo y color.
-  2. Ruta óptima — polilínea roja con pop-ups de métricas.
-  3. Todas las aristas — conexiones grises del grafo.
-  4. Ríos — capa GeoJSON de la red fluvial (si disponible).
+  2. Ruta óptima — polilínea roja siguiendo carreteras reales.
+  3. Todas las aristas — conexiones siguiendo vías reales.
+  4. Ríos — capa GeoJSON de la red fluvial.
 """
 
 from __future__ import annotations
@@ -60,6 +63,7 @@ def generar_mapa_interactivo(
     nombre_ruta: str = "Ruta Óptima Dijkstra",
     nombre_archivo: str = "mapa_interactivo.html",
     abrir_navegador: bool = False,
+    geometrias_reales: Optional[Dict[str, list]] = None,
 ) -> str:
     """
     Genera un mapa HTML interactivo con Folium.
@@ -71,11 +75,15 @@ def generar_mapa_interactivo(
     nombre_ruta : str — nombre descriptivo para la ruta.
     nombre_archivo : str — nombre del archivo HTML de salida.
     abrir_navegador : bool — si abrir automáticamente en el navegador.
+    geometrias_reales : dict | None — caché de geometrías reales
+        {"{origen}-{destino}": [[lon, lat], ...]}
 
     Returns
     -------
     str : ruta absoluta del archivo HTML generado.
     """
+    geo_cache = geometrias_reales or {}
+
     # ── Calcular centro del mapa ─────────────────────────────
     lats = [n.latitud for n in grafo.nodos if n.latitud != 0]
     lons = [n.longitud for n in grafo.nodos if n.longitud != 0]
@@ -128,9 +136,18 @@ def generar_mapa_interactivo(
             f"🛣️ Vía: {arista.tipo_via} ({arista.estado_via})"
         )
 
+        # Usar geometría real si disponible, si no línea recta
+        clave = f"{arista.origen}-{arista.destino}"
+        geo_coords = geo_cache.get(clave)
+        if geo_coords and len(geo_coords) > 1:
+            # geo_coords es [[lon, lat], ...] → convertir a [[lat, lon], ...]
+            locations = [[c[1], c[0]] for c in geo_coords]
+        else:
+            locations = [[n_o.latitud, n_o.longitud],
+                         [n_d.latitud, n_d.longitud]]
+
         folium.PolyLine(
-            locations=[[n_o.latitud, n_o.longitud],
-                       [n_d.latitud, n_d.longitud]],
+            locations=locations,
             color=color_via,
             weight=1.5,
             opacity=0.5,
@@ -143,25 +160,41 @@ def generar_mapa_interactivo(
     # ── Capa de ruta óptima ──────────────────────────────────
     if ruta_optima and len(ruta_optima) >= 2:
         capa_ruta = folium.FeatureGroup(name=f"🛤️ {nombre_ruta}")
-        coordenadas_ruta = []
         dist_total = 0.0
         tiempo_total = 0.0
 
-        for i in range(len(ruta_optima)):
-            nodo = grafo.obtener_nodo(ruta_optima[i])
-            if nodo:
-                coordenadas_ruta.append([nodo.latitud, nodo.longitud])
-            if i < len(ruta_optima) - 1:
-                ar = grafo.obtener_arista(ruta_optima[i], ruta_optima[i + 1])
-                if ar:
-                    dist_total += ar.distancia_km
-                    tiempo_total += ar.tiempo_h
+        # Construir coordenadas de la ruta usando geometrías reales
+        coordenadas_ruta = []
+        for i in range(len(ruta_optima) - 1):
+            clave = f"{ruta_optima[i]}-{ruta_optima[i + 1]}"
+            ar = grafo.obtener_arista(ruta_optima[i], ruta_optima[i + 1])
+            if ar:
+                dist_total += ar.distancia_km
+                tiempo_total += ar.tiempo_h
+
+            geo_seg = geo_cache.get(clave)
+            if geo_seg and len(geo_seg) > 1:
+                segmento = [[c[1], c[0]] for c in geo_seg]
+            else:
+                n_o = grafo.obtener_nodo(ruta_optima[i])
+                n_d = grafo.obtener_nodo(ruta_optima[i + 1])
+                segmento = []
+                if n_o:
+                    segmento.append([n_o.latitud, n_o.longitud])
+                if n_d:
+                    segmento.append([n_d.latitud, n_d.longitud])
+
+            # Evitar duplicar punto de conexión
+            if coordenadas_ruta and segmento:
+                coordenadas_ruta.extend(segmento[1:])
+            else:
+                coordenadas_ruta.extend(segmento)
 
         # Línea principal de la ruta
         folium.PolyLine(
             locations=coordenadas_ruta,
             color="#D32F2F",
-            weight=4,
+            weight=5,
             opacity=0.9,
             popup=folium.Popup(
                 f"<b>{nombre_ruta}</b><br>"
@@ -356,3 +389,4 @@ def _agregar_leyenda(mapa: folium.Map) -> None:
     legend_html += "</div>"
 
     mapa.get_root().html.add_child(folium.Element(legend_html))
+

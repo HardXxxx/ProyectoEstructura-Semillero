@@ -516,7 +516,16 @@ def main():
         if ruta_felt else "Ruta Óptima",
     )
 
-    # 9. Mapa interactivo HTML (Folium)
+    # 9. Obtener geometrías reales de carreteras (OSRM)
+    geo_cache = {}
+    try:
+        from src.visualization.route_geometry import obtener_geometrias_grafo
+        geo_cache = obtener_geometrias_grafo(grafo, usar_cache=True)
+    except Exception as e:
+        print(f"  [!] No se pudieron obtener geometrías reales: {e}")
+        geo_cache = {}
+
+    # 10. Mapa interactivo HTML (Folium) con rutas reales
     try:
         ruta_mapa = generar_mapa_interactivo(
             grafo,
@@ -524,6 +533,7 @@ def main():
             nombre_ruta=f"Ruta Óptima: {pesca[0].nombre} → Bogotá"
             if ruta_felt else "Ruta Óptima",
             abrir_navegador=False,
+            geometrias_reales=geo_cache,
         )
         print(f"  → Abre en tu navegador: {ruta_mapa}")
     except Exception as e:
