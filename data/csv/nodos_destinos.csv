@@ -1,0 +1,5 @@
+id,nombre,tipo,latitud,longitud,demanda_kg_dia,observacion
+V_PG,Mercado Puerto Gaitán,V,4.3128,-72.0826,200,Mercado local
+V_VLL,Mercado Villavicencio,V,4.1420,-73.6266,500,Mercado regional
+V_BOG,Mercado Bogotá,V,4.6097,-74.0817,1000,Mercado destino principal - Corabastos
+

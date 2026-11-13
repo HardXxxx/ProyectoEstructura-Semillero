@@ -1,0 +1,25 @@
+# === Dependencias principales ===
+networkx>=3.1
+matplotlib>=3.7
+numpy>=1.24
+
+# === Geoespacial ===
+geopandas>=0.13
+shapely>=2.0
+pyproj>=3.5
+fiona>=1.9
+
+# === Datos ===
+pandas>=2.0
+
+# === Optimización ===
+scipy>=1.11
+pulp>=2.7
+
+# === Testing ===
+pytest>=7.4
+
+# === Utilidades ===
+tabulate>=0.9
+colorama>=0.4
+

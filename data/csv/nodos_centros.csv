@@ -1,0 +1,8 @@
+id,nombre,tipo,latitud,longitud,capacidad_frio_kg,costo_fijo,tiene_energia,tiene_agua,tiene_muelle,restriccion_ambiental,observacion
+F01,Centro Frío Alto Neblinas,F,4.3450,-72.1150,2000,5000000,1,1,1,0,Candidato cerca de ASOPESGA
+F02,Centro Frío Puerto Gaitán,F,4.3128,-72.0826,5000,3000000,1,1,1,0,Casco urbano - infraestructura existente
+A01,Acopio San Miguel,A,4.2900,-72.0600,1000,2500000,1,1,0,0,Candidato río Meta
+A02,Acopio Río Manacacías,A,4.3350,-72.1050,1500,3500000,1,1,1,0,Punto medio Manacacías
+F03,Centro Frío Puerto López,F,4.0862,-72.9550,4000,4500000,1,1,1,0,Centro intermedio en ruta a Villavicencio
+A03,Acopio Puerto Trujillo,A,4.1500,-71.5000,800,2000000,0,1,1,0,Zona sin energía confiable
+

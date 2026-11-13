@@ -1,0 +1,47 @@
+# Archivos de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyo
+*.pyc
+
+# Entornos virtuales
+venv/
+env/
+.env/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema operativo
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Distribución / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Pytest / Testing
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Datos generados
+data/output/*
+!data/output/.gitkeep
+
+# Logs
+*.log
+
