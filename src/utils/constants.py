@@ -11,8 +11,8 @@ costos base y coordenadas de referencia del corredor logístico.
 
 COORDENADAS = {
     "Puerto Gaitán":  (4.3128, -72.0826),
-    "Villavicencio":  (4.1420, -73.6266),
-    "Bogotá":         (4.6097, -74.0817),
+    "Villavicencio":  (4.1387, -73.6310),
+    "Bogotá":         (4.6615, -74.0590),
     "Puerto López":   (4.0862, -72.9550),
 }
 
@@ -99,9 +99,18 @@ class TipoNodo:
 # PESOS DE LA FUNCIÓN MULTICRITERIO
 # ═══════════════════════════════════════════════════════════════════
 
-# w_ij = α·tiempo + β·costo + γ·riesgo_térmico + δ·pérdida_esperada
-ALPHA = 0.35   # peso del tiempo
-BETA  = 0.25   # peso del costo
-GAMMA = 0.25   # peso del riesgo térmico
-DELTA = 0.15   # peso de la pérdida esperada
+# w_ij = α·tiempo + β·costo + γ·riesgo + δ·pérdida
+#       + ε·(1 - confiabilidad) + ζ·prob_retraso
+ALPHA   = 0.25   # peso del tiempo (incluye espera)
+BETA    = 0.20   # peso del costo
+GAMMA   = 0.20   # peso del riesgo combinado (térmico + accidente + derrumbe)
+DELTA   = 0.10   # peso de la pérdida esperada
+EPSILON = 0.10   # peso de la no-confiabilidad de la vía
+ZETA    = 0.05   # peso de la probabilidad de retraso
+
+# ═══════════════════════════════════════════════════════════════════
+# PEAJES
+# ═══════════════════════════════════════════════════════════════════
+
+COSTO_PEAJE_PROMEDIO = 12_000   # COP por peaje promedio
 

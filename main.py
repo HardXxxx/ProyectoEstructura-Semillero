@@ -152,12 +152,12 @@ def _cargar_datos_ejemplo(grafo: GrafoLogistico):
                             capacidad_frio_kg=2000, costo_fijo=5000000))
     grafo.agregar_nodo(Nodo("F02", "Centro Puerto Gaitán", "F", 4.312, -72.082,
                             capacidad_frio_kg=5000, costo_fijo=3000000))
-    grafo.agregar_nodo(Nodo("V_BOG", "Bogotá", "V", 4.609, -74.081))
+    grafo.agregar_nodo(Nodo("V_BOG1", "Buceo y Pesca Bogotá", "V", 4.6615, -74.059))
     grafo.agregar_arista(Arista("P01", "F01", 5, 0.2, 17500, 0.1))
     grafo.agregar_arista(Arista("P02", "F01", 7, 0.3, 24500, 0.12))
     grafo.agregar_arista(Arista("P01", "F02", 15, 0.6, 52500, 0.3))
     grafo.agregar_arista(Arista("F01", "F02", 12, 0.45, 42000, 0.15))
-    grafo.agregar_arista(Arista("F02", "V_BOG", 300, 7.0, 1050000, 0.2))
+    grafo.agregar_arista(Arista("F02", "V_BOG1", 300, 7.0, 1050000, 0.2))
     print("  [✓] Datos de ejemplo cargados")
 
 
