@@ -374,6 +374,14 @@ def generar_mapa_interactivo(
     # ── Control de capas ─────────────────────────────────────
     folium.LayerControl(collapsed=False).add_to(mapa)
 
+    # ── Presentación interactiva por diapositivas (Mapa + Grafos Vial, Ríos y Mixto) ──
+    try:
+        from .graph_slides import generar_html_slides
+        slides_html = generar_html_slides(grafo, geo_cache, itinerarios)
+        mapa.get_root().html.add_child(folium.Element(slides_html))
+    except Exception as exc:
+        print(f"  [!] No se pudieron inyectar diapositivas de grafos: {exc}")
+
     # ── Guardar ──────────────────────────────────────────────
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     ruta_archivo = OUTPUT_DIR / nombre_archivo
