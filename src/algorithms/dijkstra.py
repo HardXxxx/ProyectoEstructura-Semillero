@@ -14,10 +14,17 @@ from typing import Dict, List, Optional, Tuple
 from ..models.grafo_logistico import GrafoLogistico
 
 
+def _restringido(grafo: GrafoLogistico, nodo_id: str) -> bool:
+    """Indica si el nodo tiene restricción ambiental (hábitat protegido)."""
+    nodo = grafo.obtener_nodo(nodo_id)
+    return bool(nodo is not None and nodo.restriccion_ambiental)
+
+
 def dijkstra(grafo: GrafoLogistico,
              origen: str,
              destino: str,
-             criterio: str = "peso") -> Tuple[float, List[str]]:
+             criterio: str = "peso",
+             evitar_restringidos: bool = False) -> Tuple[float, List[str]]:
     """
     Encuentra el camino mínimo entre dos nodos usando Dijkstra.
 
@@ -73,6 +80,9 @@ def dijkstra(grafo: GrafoLogistico,
 
             if vecino in visitados:
                 continue
+            if (evitar_restringidos and vecino != destino
+                    and _restringido(grafo, vecino)):
+                continue
 
             # Obtener el peso según el criterio
             if criterio == "peso":
@@ -103,7 +113,9 @@ def dijkstra(grafo: GrafoLogistico,
 
 def dijkstra_completo(grafo: GrafoLogistico,
                       origen: str,
-                      criterio: str = "peso") -> Dict[str, Tuple[float, List[str]]]:
+                      criterio: str = "peso",
+                      evitar_restringidos: bool = False
+                      ) -> Dict[str, Tuple[float, List[str]]]:
     """
     Ejecuta Dijkstra desde un origen hacia TODOS los nodos alcanzables.
 
@@ -124,6 +136,11 @@ def dijkstra_completo(grafo: GrafoLogistico,
         if nodo_actual in visitados:
             continue
         visitados.add(nodo_actual)
+
+        # Un nodo restringido puede alcanzarse, pero no se expande
+        if (evitar_restringidos and nodo_actual != origen
+                and _restringido(grafo, nodo_actual)):
+            continue
 
         for arista in grafo.obtener_aristas(nodo_actual):
             vecino = arista.destino

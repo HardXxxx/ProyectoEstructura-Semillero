@@ -94,7 +94,7 @@ def resolver_localizacion_greedy(
             for pesca_id in no_cubiertos:
                 # Calcular tiempo con Dijkstra
                 dist, camino = dijkstra(grafo, pesca_id, candidato.id,
-                                        criterio="tiempo_h")
+                                        criterio="tiempo_h", evitar_restringidos=True)
                 if dist <= tiempo_max_h:
                     cubiertos_por_este.add(pesca_id)
 
@@ -122,7 +122,7 @@ def resolver_localizacion_greedy(
     # Tiempo máximo sin frío
     max_t = 0.0
     for pesca_id, centro_id in resultado.asignaciones.items():
-        dist, _ = dijkstra(grafo, pesca_id, centro_id, criterio="tiempo_h")
+        dist, _ = dijkstra(grafo, pesca_id, centro_id, criterio="tiempo_h", evitar_restringidos=True)
         if dist < float("inf"):
             max_t = max(max_t, dist)
     resultado.tiempo_max_sin_frio = max_t
@@ -168,7 +168,7 @@ def resolver_localizacion_pulp(
     tiempos: Dict[Tuple[str, str], float] = {}
     for i in I:
         for j in J:
-            dist, _ = dijkstra(grafo, i, j, criterio="tiempo_h")
+            dist, _ = dijkstra(grafo, i, j, criterio="tiempo_h", evitar_restringidos=True)
             tiempos[(i, j)] = dist
 
     # Variables de decisión

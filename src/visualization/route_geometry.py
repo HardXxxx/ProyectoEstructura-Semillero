@@ -110,8 +110,11 @@ def obtener_geometrias_grafo(
         clave = f"{arista.origen}-{arista.destino}"
 
         # Si ya está en caché, saltar
+        es_fluvial = arista.tipo_via == "fluvial"
         if clave in cache and cache[clave]:
-            continue
+            # Una entrada fluvial con <= 2 puntos es una línea recta: recalcular
+            if not (es_fluvial and len(cache[clave]) <= 2):
+                continue
 
         n_o = grafo.obtener_nodo(arista.origen)
         n_d = grafo.obtener_nodo(arista.destino)
@@ -135,7 +138,7 @@ def obtener_geometrias_grafo(
                       f"usando línea recta")
         elif arista.tipo_via == "fluvial":
             # Para rutas fluviales: intentar seguir el shapefile
-            coords = _obtener_ruta_fluvial(
+            coords = _ruta_fluvial_real(
                 n_o.latitud, n_o.longitud,
                 n_d.latitud, n_d.longitud,
             )
@@ -216,42 +219,14 @@ def obtener_geometria_ruta(
     return coords_completas
 
 
-def _obtener_ruta_fluvial(
+def _ruta_fluvial_real(
     lat1: float, lon1: float,
     lat2: float, lon2: float,
 ) -> Optional[List[List[float]]]:
-    """
-    Intenta obtener la ruta fluvial más cercana del shapefile.
-    Busca los segmentos de río más cercanos a los puntos de origen
-    y destino y los conecta.
-    """
+    """Ruta sobre el cauce real (RedFluvial); None si no hay geopandas o conexión."""
     try:
-        import geopandas as gpd
-        from shapely.geometry import Point, LineString
-        from shapely.ops import nearest_points
-
-        shp_path = SHP_DIR / "rios.shp"
-        if not shp_path.exists():
-            return None
-
-        gdf = gpd.read_file(str(shp_path))
-        p_origen = Point(lon1, lat1)
-        p_destino = Point(lon2, lat2)
-
-        # Encontrar el río más cercano al origen
-        distancias_o = gdf.geometry.distance(p_origen)
-        idx_cercano = distancias_o.idxmin()
-        rio = gdf.geometry.iloc[idx_cercano]
-
-        if rio is None:
-            return None
-
-        # Extraer coordenadas del segmento de río
-        if hasattr(rio, "coords"):
-            coords = list(rio.coords)
-            return [[c[0], c[1]] for c in coords]
-
-    except (ImportError, Exception):
-        pass
-
-    return None
+        from .river_network import obtener_red_fluvial
+        res = obtener_red_fluvial().ruta(lat1, lon1, lat2, lon2)
+    except ImportError:
+        return None
+    return res[0] if res else None

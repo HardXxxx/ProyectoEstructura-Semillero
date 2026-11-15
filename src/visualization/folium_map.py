@@ -67,6 +67,7 @@ def generar_mapa_interactivo(
     nombre_archivo: str = "mapa_interactivo.html",
     abrir_navegador: bool = False,
     geometrias_reales: Optional[Dict[str, list]] = None,
+    itinerarios: Optional[list] = None,
 ) -> str:
     """
     Genera un mapa HTML interactivo con Folium.
@@ -113,33 +114,60 @@ def generar_mapa_interactivo(
         name="Satélite (Esri)",
     ).add_to(mapa)
 
-    # ── Capa de ríos (si existe shapefile) ───────────────────
+    itinerarios = list(itinerarios or [])
+
+    # ── Capa de ríos reales (siempre visible) ────────────────
     _agregar_capa_rios(mapa)
 
     # ── Capa de puntos de campo (GeoJSON externo) ─────────
     _agregar_puntos_campo(mapa)
 
     # ── Capa de aristas (todas las conexiones) ───────────────
-    capa_aristas = folium.FeatureGroup(name="🔗 Conexiones del Grafo")
+    capa_aristas = folium.FeatureGroup(name="🔗 Conexiones del Grafo", show=True)
+    colores_tipo_estado = {
+        ("terrestre", "buena"): ("#2E7D32", 3.5, None),
+        ("terrestre", "regular"): ("#EF6C00", 3.0, None),
+        ("terrestre", "mala"): ("#C62828", 2.5, "6 4"),
+        ("acceso_local", "buena"): ("#546E7A", 2.5, None),
+        ("acceso_local", "regular"): ("#78909C", 2.2, "4 4"),
+        ("acceso_local", "mala"): ("#8D6E63", 2.0, "3 5"),
+        ("fluvial", "buena"): ("#1565C0", 3.0, "8 6"),
+        ("fluvial", "regular"): ("#42A5F5", 2.5, "8 6"),
+        ("fluvial", "mala"): ("#0D47A1", 2.2, "4 6"),
+    }
     for arista in grafo.aristas:
         n_o = grafo.obtener_nodo(arista.origen)
         n_d = grafo.obtener_nodo(arista.destino)
         if not n_o or not n_d:
             continue
 
-        color_via = {
-            "terrestre": "#9E9E9E",
-            "fluvial":   "#42A5F5",
-            "acceso_local": "#BDBDBD",
-        }.get(arista.tipo_via, "#9E9E9E")
+        color_via, peso_via, dash_via = colores_tipo_estado.get(
+            (arista.tipo_via, arista.estado_via),
+            ("#616161", 2.5, None),
+        )
 
         popup_html = (
-            f"<b>{n_o.nombre} → {n_d.nombre}</b><br>"
-            f"📏 {arista.distancia_km} km<br>"
-            f"⏱️ {arista.tiempo_h:.2f} h<br>"
-            f"💰 ${arista.costo_cop:,.0f} COP<br>"
-            f"🌡️ Riesgo térmico: {arista.riesgo_termico}<br>"
-            f"🛣️ Vía: {arista.tipo_via} ({arista.estado_via})"
+            f"<b>{n_o.nombre} ({arista.origen}) → {n_d.nombre} ({arista.destino})</b><br>"
+            f"🛣️ <b>tipo_via:</b> {arista.tipo_via} | <b>estado_via:</b> {arista.estado_via}<br>"
+            f"📏 <b>distancia_km:</b> {arista.distancia_km:.2f} km<br>"
+            f"⏱️ <b>tiempo_h:</b> {arista.tiempo_h:.2f} h | "
+            f"<b>tiempo_espera_h:</b> {arista.tiempo_espera_h:.2f} h | "
+            f"<b>tiempo_efectivo_h:</b> {arista.tiempo_efectivo_h:.2f} h<br>"
+            f"💰 <b>costo_cop:</b> ${arista.costo_cop:,.0f} | "
+            f"<b>peajes:</b> {arista.peajes} (${arista.costo_peajes_cop:,.0f}) | "
+            f"<b>costo_total_cop:</b> ${arista.costo_total_cop:,.0f}<br>"
+            f"🚗 <b>flujo_vehicular:</b> {arista.flujo_vehicular} | "
+            f"<b>confiabilidad_via:</b> {arista.confiabilidad_via:.2f} | "
+            f"<b>prob_retraso:</b> {arista.prob_retraso:.2f}<br>"
+            f"🌡️ <b>riesgo_termico:</b> {arista.riesgo_termico:.2f} | "
+            f"<b>riesgo_accidente:</b> {arista.riesgo_accidente:.2f} | "
+            f"<b>riesgo_derrumbe:</b> {arista.riesgo_derrumbe:.2f} | "
+            f"<b>riesgo_combinado:</b> {arista.riesgo_combinado:.3f}<br>"
+            f"⚖️ <b>capacidad_kg:</b> {arista.capacidad_kg:,.0f} kg | "
+            f"<b>restriccion_peso_ton:</b> {arista.restriccion_peso_ton} t | "
+            f"<b>horario_restriccion:</b> {arista.horario_restriccion}<br>"
+            f"📉 <b>perdida_esperada:</b> {arista.perdida_esperada:.2f}% | "
+            f"⚖️ <b>peso_default:</b> {arista.peso_default:.4f}"
         )
 
         # Usar geometría real si disponible, si no línea recta
@@ -155,10 +183,14 @@ def generar_mapa_interactivo(
         folium.PolyLine(
             locations=locations,
             color=color_via,
-            weight=1.5,
-            opacity=0.5,
-            popup=folium.Popup(popup_html, max_width=250),
-            tooltip=f"{arista.distancia_km} km | {arista.tiempo_h:.2f}h",
+            weight=peso_via,
+            opacity=0.75,
+            dash_array=dash_via,
+            popup=folium.Popup(popup_html, max_width=360),
+            tooltip=(
+                f"{arista.origen}→{arista.destino} ({arista.tipo_via}/{arista.estado_via}): "
+                f"{arista.distancia_km} km | {arista.tiempo_efectivo_h:.2f}h | w={arista.peso_default:.3f}"
+            ),
         ).add_to(capa_aristas)
 
     capa_aristas.add_to(mapa)
@@ -228,8 +260,9 @@ def generar_mapa_interactivo(
         capa_ruta.add_to(mapa)
 
     # ── Capa de nodos (marcadores) ───────────────────────────
+    acopio_info = _resumen_acopios(itinerarios)
     for tipo_code in [TipoNodo.PESCA, TipoNodo.ACOPIO, TipoNodo.FRIO,
-                      TipoNodo.MUELLE, TipoNodo.VENTA]:
+                      TipoNodo.VENTA]:
         nodos_tipo = grafo.nodos_por_tipo(tipo_code)
         if not nodos_tipo:
             continue
@@ -276,6 +309,17 @@ def generar_mapa_interactivo(
                         f"📊 Demanda: {demanda} kg/día<br>"
                     )
 
+            if nodo.tipo == TipoNodo.ACOPIO:
+                info = acopio_info.get(nodo.id)
+                if info:
+                    pts = ", ".join(sorted(info["origenes"]))
+                    popup_lines.append(
+                        f"📥 <b>Recibe de:</b> {pts}<br>"
+                        f"⚖️ <b>Flujo total:</b> {info['kg']:,.1f} kg/día<br>"
+                    )
+                else:
+                    popup_lines.append("📥 Sin flujo asignado en los itinerarios<br>")
+
             popup_lines.append(
                 f"📍 {nodo.latitud:.4f}, {nodo.longitud:.4f}"
             )
@@ -302,8 +346,17 @@ def generar_mapa_interactivo(
 
         capa.add_to(mapa)
 
-    # ── Leyenda HTML ─────────────────────────────────────────
+    # ── Nodos M, D, H (capas propias con efecto) ─────────────
+    _agregar_nodos_especiales(mapa, grafo, itinerarios)
+
+    # ── Itinerarios por punto de pesca + flujo de acopio ─────
+    if itinerarios:
+        _agregar_itinerarios(mapa, grafo, itinerarios, geo_cache)
+
+    # ── Leyenda y panel de itinerarios ───────────────────────
     _agregar_leyenda(mapa)
+    if itinerarios:
+        _agregar_panel_itinerarios(mapa, grafo, itinerarios)
 
     # ── Título ───────────────────────────────────────────────
     titulo_html = """
@@ -339,67 +392,274 @@ def generar_mapa_interactivo(
 #  FUNCIONES AUXILIARES
 # ═══════════════════════════════════════════════════════════════════
 
+# Estilo por tipo de vía: (color, grosor, dash_array)
+_ESTILO_VIA = {
+    "fluvial":      ("#1565C0", 5, "10 8"),
+    "acceso_local": ("#757575", 4, None),
+    "terrestre":    ("#E65100", 4, None),
+}
+_NOMBRE_VIA = {
+    "fluvial": "Fluvial",
+    "acceso_local": "Acceso local",
+    "terrestre": "Terrestre",
+}
+
+
 def _agregar_capa_rios(mapa: folium.Map) -> None:
-    """Intenta agregar la capa de ríos desde el GeoJSON exportado o shapefile."""
-    # Opción 1: Usar GeoJSON generado por felt_exporter
-    geojson_rios = OUTPUT_DIR / "nodos_red.geojson"
-
-    # Opción 2: Intentar leer el shapefile directamente
+    """Agrega la capa de ríos reales (siempre visible) con tooltip del nombre."""
+    datos = None
     try:
-        import geopandas as gpd
-        shp_path = SHP_DIR / "rios.shp"
-        if shp_path.exists():
-            gdf = gpd.read_file(str(shp_path))
-            geojson_data = json.loads(gdf.to_json())
+        from .river_network import obtener_capa_rios_geojson
+        datos = obtener_capa_rios_geojson()
+    except Exception as exc:  # módulo ausente o error de lectura
+        print(f"  [!] Capa de ríos no disponible: {exc}")
+    if not datos or not datos.get("features"):
+        return
 
-            capa_rios = folium.FeatureGroup(name="🌊 Red Fluvial")
-            folium.GeoJson(
-                geojson_data,
-                style_function=lambda x: {
-                    "color": "#42A5F5",
-                    "weight": 1.5,
-                    "opacity": 0.6,
-                },
-                name="Ríos",
-            ).add_to(capa_rios)
-            capa_rios.add_to(mapa)
-            return
-    except (ImportError, Exception):
-        pass  # geopandas no disponible o error al leer
+    for idx, feat in enumerate(datos.get("features", []), start=1):
+        props = feat.setdefault("properties", {})
+        if not props.get("nombre"):
+            props["nombre"] = f"Tramo fluvial #{idx} (Red Hidrográfica Meta)"
+
+    capa = folium.FeatureGroup(name="🌊 Red Fluvial (ríos reales)", show=True)
+    folium.GeoJson(
+        datos,
+        style_function=lambda _f: {
+            "color": "#1E88E5", "weight": 2.5, "opacity": 0.85,
+        },
+        tooltip=folium.GeoJsonTooltip(
+            fields=["nombre"], aliases=["Río:"], labels=True, sticky=True,
+        ),
+    ).add_to(capa)
+    capa.add_to(mapa)
+
+
+def _tiene_propiedad(datos: dict, clave: str) -> bool:
+    """Indica si todas las features del GeoJSON tienen la propiedad dada."""
+    feats = datos.get("features", [])
+    return bool(feats) and all(
+        clave in (f.get("properties") or {}) for f in feats
+    )
+
+
+def _locs_tramo(grafo: GrafoLogistico, geo_cache: dict, o: str, d: str) -> list:
+    """Coordenadas [[lat, lon], ...] de un tramo (geometría real o recta)."""
+    geo = geo_cache.get(f"{o}-{d}")
+    if geo and len(geo) > 1:
+        return [[c[1], c[0]] for c in geo]
+    n_o, n_d = grafo.obtener_nodo(o), grafo.obtener_nodo(d)
+    if n_o and n_d:
+        return [[n_o.latitud, n_o.longitud], [n_d.latitud, n_d.longitud]]
+    return []
+
+
+def _paradas(it) -> list:
+    """Lista ordenada de IDs de parada de un itinerario."""
+    paradas = [it.origen_id]
+    for t in it.tramos:
+        paradas.append(t.destino)
+    return paradas
+
+
+def _resumen_acopios(itinerarios: list) -> Dict[str, dict]:
+    """Por acopio: puntos de pesca que recibe y kg/día totales."""
+    res: Dict[str, dict] = {}
+    for it in itinerarios:
+        if not getattr(it, "acopio_id", None):
+            continue
+        r = res.setdefault(it.acopio_id, {"origenes": set(), "kg": 0.0})
+        r["origenes"].add(it.origen_id)
+        r["kg"] += float(getattr(it, "kg_inicial", 0.0) or 0.0)
+    return res
+
+
+def _tramo_popup(grafo: GrafoLogistico, t) -> str:
+    """HTML del popup de un tramo."""
+    n_o, n_d = grafo.obtener_nodo(t.origen), grafo.obtener_nodo(t.destino)
+    no = n_o.nombre if n_o else t.origen
+    nd = n_d.nombre if n_d else t.destino
+    efecto = getattr(t, "efecto", "") or "—"
+    return (
+        f"<b>{no} → {nd}</b><br>"
+        f"🛣️ Vía: {_NOMBRE_VIA.get(t.tipo_via, t.tipo_via)}<br>"
+        f"📏 {t.distancia_km:.1f} km<br>⏱️ {t.tiempo_h:.2f} h<br>"
+        f"✨ Efecto: {efecto}"
+    )
+
+
+def _icono_numerado(num: int, color: str) -> folium.DivIcon:
+    """Marca circular numerada para una parada."""
+    html = (
+        f'<div style="background:{color};color:white;border:2px solid white;'
+        f'border-radius:50%;width:22px;height:22px;line-height:18px;'
+        f'text-align:center;font:bold 12px Arial;'
+        f'box-shadow:0 0 3px rgba(0,0,0,.6);">{num}</div>'
+    )
+    return folium.DivIcon(html=html, icon_size=(22, 22), icon_anchor=(11, 11))
+
+
+def _agregar_itinerarios(mapa, grafo, itinerarios, geo_cache) -> None:
+    """Una capa por itinerario + capa resumen 'Flujo de acopio'."""
+    flujo = folium.FeatureGroup(name="📦 Flujo de acopio (P→A / P→M→A)", show=False)
+
+    for i, it in enumerate(itinerarios):
+        capa = folium.FeatureGroup(
+            name=(f"🐟 Recorrido {it.origen_id} → Acopio → Frío → Destino"
+                  f" ({it.acopio_id or '—'} / {it.centro_frio_id or '—'}"
+                  f" / {it.destino_id or '—'})"),
+            show=(i == 0),
+        )
+        llegado_a_acopio = False
+        for t in it.tramos:
+            locs = _locs_tramo(grafo, geo_cache, t.origen, t.destino)
+            if len(locs) < 2:
+                continue
+            color, peso, dash = _ESTILO_VIA.get(t.tipo_via, ("#E65100", 4, None))
+            folium.PolyLine(
+                locs, color=color, weight=peso, opacity=0.9, dash_array=dash,
+                popup=folium.Popup(_tramo_popup(grafo, t), max_width=300),
+                tooltip=f"{t.origen}→{t.destino}: {t.distancia_km:.1f} km",
+            ).add_to(capa)
+            if not llegado_a_acopio:  # tramos hasta alcanzar el acopio
+                folium.PolyLine(
+                    locs, color=color, weight=peso + 1, opacity=0.65,
+                    dash_array=dash,
+                    tooltip=f"{it.origen_id} → {it.acopio_id}: aporta "
+                            f"{getattr(it, 'kg_inicial', 0):.0f} kg/día",
+                ).add_to(flujo)
+                n_d = grafo.obtener_nodo(t.destino)
+                if n_d and n_d.tipo == TipoNodo.ACOPIO:
+                    llegado_a_acopio = True
+
+        for k, nid in enumerate(_paradas(it), start=1):
+            n = grafo.obtener_nodo(nid)
+            if not n:
+                continue
+            color = COLORES_FELT.get(n.tipo, "#757575")
+            folium.Marker(
+                [n.latitud, n.longitud],
+                icon=_icono_numerado(k, color),
+                tooltip=f"Parada {k}: {n.nombre} ({n.id})",
+            ).add_to(capa)
+        capa.add_to(mapa)
+
+    flujo.add_to(mapa)
+
+
+def _agregar_nodos_especiales(mapa, grafo, itinerarios) -> None:
+    """Capas de muelles (M), zonas de deterioro (D) y hábitats (H)."""
+    evitados: Dict[str, list] = {}
+    for it in itinerarios:
+        for h in (getattr(it, "nodos_restringidos_evitados", None) or []):
+            evitados.setdefault(h, []).append(it.origen_id)
+
+    config = [
+        (TipoNodo.MUELLE, "⚓ Muelles (transbordo fluvial→terrestre)", "anchor", "purple"),
+        (TipoNodo.DETERIORO, "⚠️ Zonas de deterioro (×1.5)", "exclamation-triangle", "orange"),
+        (TipoNodo.HABITAT, "🌿 Hábitats protegidos (restringidos)", "leaf", "green"),
+    ]
+    for tipo, titulo, icono, color in config:
+        nodos = grafo.nodos_por_tipo(tipo)
+        if not nodos:
+            continue
+        capa = folium.FeatureGroup(name=titulo, show=True)
+        for n in nodos:
+            if tipo == TipoNodo.MUELLE:
+                efecto = ("Transbordo fluvial → terrestre: añade tiempo de "
+                          "espera y la carga pierde frío durante el cambio.")
+            elif tipo == TipoNodo.DETERIORO:
+                efecto = ("Zona de deterioro: el tramo entrante multiplica "
+                          "el deterioro del pescado ×1.5 (calor, sin frío).")
+            else:
+                ev = sorted(set(evitados.get(n.id, [])))
+                efecto = ("Hábitat protegido: tránsito restringido, las rutas "
+                          "lo evitan como nodo intermedio.<br>"
+                          + ("🚫 Evitado por itinerarios de: " + ", ".join(ev)
+                             if ev else "🚫 Ningún itinerario necesitó desviarse."))
+            popup = f"<b>{n.nombre}</b> ({n.id})<br>{efecto}"
+            if tipo == TipoNodo.DETERIORO:
+                folium.Circle(
+                    [n.latitud, n.longitud], radius=1500, color="#FB8C00",
+                    weight=1, fill=True, fill_color="#FB8C00", fill_opacity=0.25,
+                    tooltip="Zona de deterioro: deterioro ×1.5",
+                ).add_to(capa)
+            elif tipo == TipoNodo.HABITAT:
+                folium.Circle(
+                    [n.latitud, n.longitud], radius=2000, color="#D32F2F",
+                    weight=2, dash_array="6 6", fill=True,
+                    fill_color="#43A047", fill_opacity=0.25,
+                    tooltip="Hábitat protegido — tránsito restringido; rutas lo evitan",
+                ).add_to(capa)
+            folium.Marker(
+                [n.latitud, n.longitud],
+                icon=folium.Icon(color=color, icon=icono, prefix="fa"),
+                popup=folium.Popup(popup, max_width=300),
+                tooltip=f"{n.nombre} ({TipoNodo.descripcion(tipo)})",
+            ).add_to(capa)
+        capa.add_to(mapa)
 
 
 def _agregar_leyenda(mapa: folium.Map) -> None:
-    """Agrega una leyenda HTML al mapa."""
-    items = [
-        ("#2196F3", "Punto de Pesca"),
-        ("#FF9800", "Centro de Acopio"),
-        ("#00BCD4", "Centro de Frío"),
-        ("#E91E63", "Mercado / Venta"),
-        ("#D32F2F", "Ruta Óptima"),
-        ("#9E9E9E", "Conexiones"),
-        ("#F39C12", "Acopio (campo)"),
-        ("#E74C3C", "Deterioro (campo)"),
-        ("#27AE60", "Hábitat (campo)"),
-        ("#3498DB", "Muelle (campo)"),
-        ("#8E44AD", "Venta (campo)"),
+    """Leyenda: tipos de nodo, tipos de vía y círculos D/H."""
+    nodos = [
+        ("#2196F3", "Punto de Pesca (P)"), ("#FF9800", "Centro de Acopio (A)"),
+        ("#00BCD4", "Centro de Frío (F)"), ("#E91E63", "Venta (V)"),
+        ("#9C27B0", "Muelle (M) ⚓"), ("#F57C00", "Deterioro (D) ⚠"),
+        ("#4CAF50", "Hábitat protegido (H) 🌿"),
     ]
+    vias = [
+        ("#1565C0", "Fluvial (punteada)", "10 8"), ("#757575", "Acceso local", None),
+        ("#E65100", "Terrestre", None), ("#1E88E5", "Río real", None),
+    ]
+    h = ('<div style="position:fixed; bottom:30px; right:10px; z-index:1000;'
+         'background:white; padding:12px 16px; border-radius:8px;'
+         'box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:Arial;'
+         'font-size:12px; line-height:20px;"><b>Leyenda</b><br>')
+    for c, l in nodos:
+        h += (f'<span style="display:inline-block;width:12px;height:12px;'
+              f'background:{c};border-radius:50%;margin-right:6px;'
+              f'vertical-align:middle;"></span>{l}<br>')
+    h += '<b>Vías</b><br>'
+    for c, l, d in vias:
+        borde = "dashed" if d else "solid"
+        h += (f'<span style="display:inline-block;width:22px;height:0;'
+              f'border-top:3px {borde} {c};margin-right:6px;'
+              f'vertical-align:middle;"></span>{l}<br>')
+    h += ('<b>Zonas</b><br>'
+          '<span style="display:inline-block;width:12px;height:12px;'
+          'background:rgba(251,140,0,.35);border:1px solid #FB8C00;'
+          'border-radius:50%;margin-right:6px;vertical-align:middle;"></span>'
+          'Deterioro ×1.5 (r=1.5 km)<br>'
+          '<span style="display:inline-block;width:12px;height:12px;'
+          'background:rgba(67,160,71,.35);border:2px dashed #D32F2F;'
+          'border-radius:50%;margin-right:6px;vertical-align:middle;"></span>'
+          'Hábitat restringido (r=2 km)<br></div>')
+    mapa.get_root().html.add_child(folium.Element(h))
 
-    legend_html = """
-    <div style="position:fixed; bottom:30px; right:10px; z-index:1000;
-         background:white; padding:12px 16px; border-radius:8px;
-         box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:Arial;
-         font-size:12px; line-height:20px;">
-      <b>Leyenda</b><br>
-    """
-    for color, label in items:
-        legend_html += (
-            f'<span style="display:inline-block; width:12px; height:12px; '
-            f'background:{color}; border-radius:50%; margin-right:6px;'
-            f'vertical-align:middle;"></span>{label}<br>'
+
+def _agregar_panel_itinerarios(mapa, grafo, itinerarios) -> None:
+    """Panel lateral con la tabla resumen de itinerarios."""
+    filas = ""
+    for it in itinerarios:
+        filas += (
+            f"<tr><td>{it.origen_id}</td><td>{it.acopio_id or '—'}</td>"
+            f"<td>{it.centro_frio_id or '—'}</td>"
+            f"<td align='right'>{it.distancia_total_km:.1f}</td>"
+            f"<td align='right'>{it.tiempo_total_h:.2f}</td>"
+            f"<td align='right'>{it.perdida_pct:.1f}%</td></tr>"
         )
-    legend_html += "</div>"
-
-    mapa.get_root().html.add_child(folium.Element(legend_html))
+    h = (
+        '<div style="position:fixed; top:80px; left:10px; z-index:1000;'
+        'background:white; padding:8px 12px; border-radius:8px;'
+        'box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:Arial;'
+        'font-size:11px; max-height:60vh; overflow:auto;">'
+        '<details open><summary><b>📋 Itinerarios por punto de pesca</b></summary>'
+        '<table style="border-collapse:collapse;margin-top:4px;" cellpadding="3">'
+        '<tr style="background:#eee;"><th>Origen</th><th>Acopio</th>'
+        '<th>Centro</th><th>km</th><th>h</th><th>% pérdida</th></tr>'
+        f'{filas}</table></details></div>'
+    )
+    mapa.get_root().html.add_child(folium.Element(h))
 
 
 def _agregar_puntos_campo(mapa: folium.Map) -> None:

@@ -15,7 +15,8 @@ from ..models.grafo_logistico import GrafoLogistico
 
 def floyd_warshall(
     grafo: GrafoLogistico,
-    criterio: str = "peso"
+    criterio: str = "peso",
+    evitar_restringidos: bool = False
 ) -> Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, Optional[str]]]]:
     """
     Ejecuta Floyd-Warshall sobre el grafo logístico.
@@ -25,6 +26,9 @@ def floyd_warshall(
     grafo : GrafoLogistico
     criterio : str
         'peso', 'distancia_km', 'tiempo_h', 'costo_cop'.
+    evitar_restringidos : bool
+        Si es True, los nodos con restricción ambiental no actúan como
+        intermedios (k) en ningún camino.
 
     Returns
     -------
@@ -61,7 +65,10 @@ def floyd_warshall(
             siguiente[arista.origen][arista.destino] = arista.destino
 
     # Algoritmo principal: triple bucle
+    restringidos = {n.id for n in grafo.nodos if n.restriccion_ambiental}
     for k in ids:
+        if evitar_restringidos and k in restringidos:
+            continue
         for i in ids:
             for j in ids:
                 if dist[i][k] + dist[k][j] < dist[i][j]:

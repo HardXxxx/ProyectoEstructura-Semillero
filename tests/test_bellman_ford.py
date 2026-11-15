@@ -90,6 +90,36 @@ def test_bellman_ford_nodo_inexistente():
     print("  [✓] test_bellman_ford_nodo_inexistente")
 
 
+def test_bellman_ford_evitar_restringidos():
+    """Verifica que Bellman-Ford evita nodos con restricción ambiental como intermedios."""
+    g = GrafoLogistico()
+    g.agregar_nodo(Nodo("P01", "Pesca", "P"))
+    g.agregar_nodo(Nodo("H01", "Hábitat", "H", restriccion_ambiental=True))
+    g.agregar_nodo(Nodo("A01", "Acopio", "A"))
+    g.agregar_nodo(Nodo("V01", "Mercado", "V"))
+
+    g.agregar_arista(Arista("P01", "H01", distancia_km=2, tiempo_h=0.1))
+    g.agregar_arista(Arista("H01", "V01", distancia_km=2, tiempo_h=0.1))
+    g.agregar_arista(Arista("P01", "A01", distancia_km=5, tiempo_h=0.3))
+    g.agregar_arista(Arista("A01", "V01", distancia_km=5, tiempo_h=0.3))
+
+    dist_libre, prev_libre, _ = bellman_ford(
+        g, "P01", criterio="tiempo_h", evitar_restringidos=False
+    )
+    assert "H01" in reconstruir_camino_bf(prev_libre, "V01")
+    assert abs(dist_libre["V01"] - 0.2) < 1e-6
+
+    dist_ev, prev_ev, _ = bellman_ford(
+        g, "P01", criterio="tiempo_h", evitar_restringidos=True
+    )
+    camino_ev = reconstruir_camino_bf(prev_ev, "V01")
+    assert "H01" not in camino_ev
+    assert camino_ev == ["P01", "A01", "V01"]
+    assert abs(dist_ev["V01"] - 0.6) < 1e-6
+    assert abs(dist_ev["H01"] - 0.1) < 1e-6
+    print("  [✓] test_bellman_ford_evitar_restringidos")
+
+
 if __name__ == "__main__":
     print("\n═══ PRUEBAS DE BELLMAN-FORD ═══\n")
     test_bellman_ford_camino_basico()
@@ -97,4 +127,5 @@ if __name__ == "__main__":
     test_bellman_ford_consistencia_dijkstra()
     test_reconstruir_camino_bf()
     test_bellman_ford_nodo_inexistente()
+    test_bellman_ford_evitar_restringidos()
     print("\n  ✅ Todas las pruebas pasaron.\n")

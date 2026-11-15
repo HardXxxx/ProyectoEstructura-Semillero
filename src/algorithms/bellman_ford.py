@@ -16,7 +16,8 @@ from ..models.grafo_logistico import GrafoLogistico
 def bellman_ford(
     grafo: GrafoLogistico,
     origen: str,
-    criterio: str = "peso"
+    criterio: str = "peso",
+    evitar_restringidos: bool = False
 ) -> Tuple[Dict[str, float], Dict[str, Optional[str]], bool]:
     """
     Ejecuta Bellman-Ford desde un nodo origen.
@@ -26,6 +27,8 @@ def bellman_ford(
     grafo : GrafoLogistico
     origen : str — ID del nodo de partida.
     criterio : str — atributo de peso a usar.
+    evitar_restringidos : bool — si es True, los nodos con restricción
+        ambiental no se usan como intermedios (sí como origen/destino).
 
     Returns
     -------
@@ -45,6 +48,14 @@ def bellman_ford(
     dist[origen] = 0.0
 
     todas_aristas = grafo.aristas
+    if evitar_restringidos:
+        restringidos = {
+            n.id for n in grafo.nodos
+            if n.restriccion_ambiental and n.id != origen
+        }
+        # No se puede salir de un nodo restringido (sería intermedio)
+        todas_aristas = [a for a in todas_aristas
+                         if a.origen not in restringidos]
 
     # Relajar |V| - 1 veces
     for _ in range(len(ids) - 1):

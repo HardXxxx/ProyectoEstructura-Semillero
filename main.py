@@ -41,6 +41,7 @@ from src.algorithms.bellman_ford import bellman_ford, reconstruir_camino_bf
 from src.optimization.facility_location import resolver_localizacion
 from src.optimization.cold_chain import SimuladorCadenaFrio
 from src.optimization.scenario_evaluator import EvaluadorEscenarios
+from src.optimization.itinerarios import calcular_itinerarios, Itinerario
 from src.utils.data_loader import cargar_nodos_csv, cargar_aristas_csv, guardar_resultados_csv
 from src.utils.constants import TipoNodo, TIEMPO_MAX_SIN_FRIO_H
 from src.visualization.felt_exporter import exportar_para_felt
@@ -82,9 +83,10 @@ def cargar_datos() -> GrafoLogistico:
         _cargar_datos_ejemplo(grafo)
         return grafo
 
-    # ── Nodos de centros / acopio ─────────────────────────────
+    # ── Nodos de centros / acopio / muelles / deterioro / hábitat ─
     try:
         datos_centros = cargar_nodos_csv("nodos_centros.csv")
+        conteo_tipo = {}
         for d in datos_centros:
             nodo = Nodo(
                 id=d["id"],
@@ -98,9 +100,12 @@ def cargar_datos() -> GrafoLogistico:
                 tiene_agua=bool(d.get("tiene_agua", 1)),
                 tiene_muelle=bool(d.get("tiene_muelle", 0)),
                 restriccion_ambiental=bool(d.get("restriccion_ambiental", 0)),
+                metadata={"observacion": d.get("observacion", "")},
             )
             grafo.agregar_nodo(nodo)
-        print(f"  [✓] {len(datos_centros)} centros / acopios cargados")
+            conteo_tipo[d["tipo"]] = conteo_tipo.get(d["tipo"], 0) + 1
+        detalle = ", ".join(f"{v} tipo {k}" for k, v in sorted(conteo_tipo.items()))
+        print(f"  [✓] {len(datos_centros)} nodos de infraestructura cargados ({detalle})")
     except FileNotFoundError:
         print("  [!] No se encontró nodos_centros.csv")
 
@@ -124,6 +129,7 @@ def cargar_datos() -> GrafoLogistico:
     # ── Aristas ───────────────────────────────────────────────
     try:
         datos_aristas = cargar_aristas_csv("aristas.csv")
+        tipos_via = {}
         for d in datos_aristas:
             arista = Arista(
                 origen=d["origen"],
@@ -135,9 +141,22 @@ def cargar_datos() -> GrafoLogistico:
                 estado_via=d.get("estado_via", "buena"),
                 tipo_via=d.get("tipo_via", "terrestre"),
                 capacidad_kg=d.get("capacidad_kg", 2000),
+                prob_retraso=d.get("prob_retraso", 0.0),
+                riesgo_accidente=d.get("riesgo_accidente", 0.0),
+                riesgo_derrumbe=d.get("riesgo_derrumbe", 0.0),
+                restriccion_peso_ton=d.get("restriccion_peso_ton", 0.0),
+                peajes=int(d.get("peajes", 0)),
+                costo_peajes_cop=d.get("costo_peajes_cop", 0.0),
+                horario_restriccion=d.get("horario_restriccion", "ninguno"),
+                flujo_vehicular=d.get("flujo_vehicular", "bajo"),
+                tiempo_espera_h=d.get("tiempo_espera_h", 0.0),
+                confiabilidad_via=d.get("confiabilidad_via", 0.90),
             )
             grafo.agregar_arista(arista)
-        print(f"  [✓] {len(datos_aristas)} conexiones cargadas")
+            tv = d.get("tipo_via", "terrestre")
+            tipos_via[tv] = tipos_via.get(tv, 0) + 1
+        detalle_via = ", ".join(f"{v} {k}" for k, v in sorted(tipos_via.items()))
+        print(f"  [✓] {len(datos_aristas)} conexiones cargadas ({detalle_via})")
     except FileNotFoundError:
         print("  [!] No se encontró aristas.csv")
 
@@ -181,7 +200,10 @@ def ejecutar_dijkstra(grafo: GrafoLogistico):
     destino = mercados[0].id
 
     for punto in pesca:
-        dist, camino = dijkstra(grafo, punto.id, destino, criterio="tiempo_h")
+        dist, camino = dijkstra(
+            grafo, punto.id, destino, criterio="tiempo_h",
+            evitar_restringidos=True,
+        )
         if dist < float("inf"):
             print(f"\n  📍 {punto.nombre} → {mercados[0].nombre}")
             print(f"     Ruta:   {' → '.join(camino)}")
@@ -213,7 +235,7 @@ def ejecutar_bellman_ford(grafo: GrafoLogistico):
 
     origen = pesca[0]
     dist_bf, prev_bf, ciclo_neg = bellman_ford(
-        grafo, origen.id, criterio="tiempo_h"
+        grafo, origen.id, criterio="tiempo_h", evitar_restringidos=True
     )
 
     # Verificar ciclos negativos
@@ -232,7 +254,10 @@ def ejecutar_bellman_ford(grafo: GrafoLogistico):
     total = 0
     for nodo in destinos_ver:
         t_bf = dist_bf.get(nodo.id, float("inf"))
-        t_dj, _ = dijkstra(grafo, origen.id, nodo.id, criterio="tiempo_h")
+        t_dj, _ = dijkstra(
+            grafo, origen.id, nodo.id, criterio="tiempo_h",
+            evitar_restringidos=True,
+        )
 
         bf_str = f"{t_bf:.4f}" if t_bf < float("inf") else "∞"
         dj_str = f"{t_dj:.4f}" if t_dj < float("inf") else "∞"
@@ -260,7 +285,9 @@ def ejecutar_floyd_warshall(grafo: GrafoLogistico):
     print("  PASO 3: FLOYD-WARSHALL — TODOS LOS PARES")
     print("═" * 60)
 
-    dist, sig = floyd_warshall(grafo, criterio="tiempo_h")
+    dist, sig = floyd_warshall(
+        grafo, criterio="tiempo_h", evitar_restringidos=True
+    )
 
     # Mostrar un subconjunto relevante
     ids_interes = []
@@ -316,10 +343,51 @@ def ejecutar_simulacion(grafo: GrafoLogistico):
     destino = mercados[0].id
 
     for punto in pesca[:3]:  # Simular los primeros 3
-        dist, camino = dijkstra(grafo, punto.id, destino, criterio="tiempo_h")
+        dist, camino = dijkstra(
+            grafo, punto.id, destino, criterio="tiempo_h",
+            evitar_restringidos=True,
+        )
         if dist < float("inf") and len(camino) >= 2:
             resultado = simulador.simular_ruta(camino, punto.produccion_kg_dia)
             print(resultado.resumen())
+
+
+# ═══════════════════════════════════════════════════════════════
+#  ITINERARIOS POR PUNTO DE PESCA
+# ═══════════════════════════════════════════════════════════════
+
+def ejecutar_itinerarios(grafo: GrafoLogistico):
+    """Calcula e imprime los itinerarios por punto de pesca hacia Bogotá y V_PG1."""
+    print("\n" + "═" * 60)
+    print("  ITINERARIOS POR PUNTO DE PESCA")
+    print("═" * 60)
+
+    mercados = grafo.mercados()
+    if not mercados:
+        print("  [!] No hay mercados definidos.")
+        return []
+
+    destino_bog = next(
+        (m.id for m in mercados if "BOG" in m.id.upper() or "Bogotá" in m.nombre),
+        mercados[-1].id,
+    )
+    destino_pg = next(
+        (m.id for m in mercados if m.id == "V_PG1"),
+        mercados[0].id,
+    )
+
+    print(f"\n  ── Destino Bogotá ({destino_bog}) ──")
+    itinerarios_bog = calcular_itinerarios(grafo, destino_bog)
+    for it in itinerarios_bog:
+        print(f"  • {it.resumen()}")
+
+    if destino_pg != destino_bog:
+        print(f"\n  ── Destino Local Puerto Gaitán ({destino_pg}) ──")
+        itinerarios_pg = calcular_itinerarios(grafo, destino_pg)
+        for it in itinerarios_pg:
+            print(f"  • {it.resumen()}")
+
+    return itinerarios_bog
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -354,7 +422,9 @@ def ejecutar_comparacion(grafo: GrafoLogistico):
             continue
         # Verificar si al menos un punto de pesca puede llegar
         puede = any(
-            dijkstra(grafo, p.id, c, criterio="tiempo_h")[0] < float("inf")
+            dijkstra(
+                grafo, p.id, c, criterio="tiempo_h", evitar_restringidos=True
+            )[0] < float("inf")
             for p in grafo.puntos_pesca()
         )
         if puede:
@@ -432,7 +502,7 @@ def ejecutar_visualizacion(grafo: GrafoLogistico):
         mercados = grafo.mercados()
         if pesca and mercados:
             _, camino = dijkstra(grafo, pesca[0].id, mercados[0].id,
-                                 criterio="tiempo_h")
+                                 criterio="tiempo_h", evitar_restringidos=True)
             if camino:
                 ruta_destacada = camino
 
@@ -478,6 +548,9 @@ def main():
     # 5. Simulación de cadena de frío
     ejecutar_simulacion(grafo)
 
+    # 5B. Itinerarios por punto de pesca
+    itinerarios_bog = ejecutar_itinerarios(grafo)
+
     # 6. Comparación de escenarios
     ejecutar_comparacion(grafo)
 
@@ -507,7 +580,7 @@ def main():
             mercados[-1].id,
         )
         _, ruta_felt = dijkstra(grafo, pesca[0].id, destino_felt,
-                                criterio="tiempo_h")
+                                criterio="tiempo_h", evitar_restringidos=True)
 
     exportar_para_felt(
         grafo,
@@ -534,6 +607,7 @@ def main():
             if ruta_felt else "Ruta Óptima",
             abrir_navegador=False,
             geometrias_reales=geo_cache,
+            itinerarios=itinerarios_bog,
         )
         print(f"  → Abre en tu navegador: {ruta_mapa}")
     except Exception as e:

@@ -123,10 +123,10 @@ class EvaluadorEscenarios:
                 for centro_id in centros_activos:
                     # pesca → centro (puede pasar por nodos intermedios)
                     d1, r1 = dijkstra(self.grafo, punto.id, centro_id,
-                                      criterio="tiempo_h")
+                                      criterio="tiempo_h", evitar_restringidos=True)
                     # centro → destino (puede pasar por otros nodos)
                     d2, r2 = dijkstra(self.grafo, centro_id, destino_final,
-                                      criterio="tiempo_h")
+                                      criterio="tiempo_h", evitar_restringidos=True)
                     if (d1 < float("inf") and d2 < float("inf")
                             and d1 + d2 < mejor_dist):
                         mejor_dist = d1 + d2
@@ -134,7 +134,7 @@ class EvaluadorEscenarios:
             else:
                 # Sin centros: ruta directa (Dijkstra puro)
                 d, r = dijkstra(self.grafo, punto.id, destino_final,
-                                criterio="tiempo_h")
+                                criterio="tiempo_h", evitar_restringidos=True)
                 if d < float("inf"):
                     mejor_dist = d
                     mejor_ruta = r

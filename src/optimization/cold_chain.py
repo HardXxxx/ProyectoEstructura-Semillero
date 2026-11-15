@@ -18,6 +18,8 @@ from ..utils.constants import (
     VIDA_UTIL_HORAS,
     COSTO_PERDIDA_KG,
     PRECIO_VENTA_KG,
+    FACTOR_DETERIORO_ZONA_D,
+    TIEMPO_TRANSBORDO_MUELLE_H,
 )
 from ..utils.geo_utils import calcular_deterioro
 
@@ -33,6 +35,7 @@ class EstadoProducto:
     kg_inicial: float = 0.0
     kg_actual: float = 0.0
     refrigerado: bool = False
+    efecto: str = ""
 
 
 @dataclass
@@ -48,6 +51,7 @@ class ResultadoSimulacion:
     tiempo_total_h: float = 0.0
     tiempo_sin_frio_total_h: float = 0.0
     num_paradas_frio: int = 0
+    num_transbordos: int = 0
     cumple_limite: bool = False
 
     def resumen(self) -> str:
@@ -63,6 +67,7 @@ class ResultadoSimulacion:
             f"  Tiempo total:           {self.tiempo_total_h:.2f} h",
             f"  Tiempo sin frío:        {self.tiempo_sin_frio_total_h:.2f} h",
             f"  Paradas con frío:       {self.num_paradas_frio}",
+            f"  Transbordos (muelle):   {self.num_transbordos}",
             f"  Cumple límite:          {'✓ Sí' if self.cumple_limite else '✗ No'}",
             "═" * 55,
         ]
@@ -140,28 +145,36 @@ class SimuladorCadenaFrio:
                 and nodo_destino.capacidad_frio_kg > 0
             )
 
-            if tiene_frio:
-                # El tramo SÍ termina en refrigeración
-                tiempo_sin_frio += arista.tiempo_h
-                deterioro_tramo = calcular_deterioro(
-                    arista.tiempo_h, self.temp_ambiente
-                )
-                deterioro_total += deterioro_tramo
-                kg_perdidos = kg_actual * (deterioro_tramo / 100.0)
-                kg_actual -= kg_perdidos
+            tipo_destino = nodo_destino.tipo if nodo_destino else ""
+            efecto = ""
+            tiempo_tramo = arista.tiempo_h
+            deterioro_tramo = calcular_deterioro(
+                arista.tiempo_h, self.temp_ambiente
+            )
 
+            if tipo_destino == "D":
+                deterioro_tramo *= FACTOR_DETERIORO_ZONA_D
+                efecto = f"Zona de deterioro ×{FACTOR_DETERIORO_ZONA_D:g}"
+            elif tipo_destino == "M":
+                # Transbordo fluvial→terrestre: espera sin frío
+                tiempo_tramo += TIEMPO_TRANSBORDO_MUELLE_H
+                tiempo_acumulado += TIEMPO_TRANSBORDO_MUELLE_H
+                deterioro_tramo = calcular_deterioro(
+                    tiempo_tramo, self.temp_ambiente
+                )
+                resultado.num_transbordos += 1
+                efecto = "Transbordo en muelle"
+
+            tiempo_sin_frio += tiempo_tramo
+            deterioro_total += deterioro_tramo
+            kg_perdidos = kg_actual * (deterioro_tramo / 100.0)
+            kg_actual -= kg_perdidos
+
+            if tiene_frio:
                 # Refrigeración: reset del timer
                 resultado.num_paradas_frio += 1
                 tiempo_sin_frio = 0.0
-            else:
-                # Sin refrigeración en destino
-                tiempo_sin_frio += arista.tiempo_h
-                deterioro_tramo = calcular_deterioro(
-                    arista.tiempo_h, self.temp_ambiente
-                )
-                deterioro_total += deterioro_tramo
-                kg_perdidos = kg_actual * (deterioro_tramo / 100.0)
-                kg_actual -= kg_perdidos
+                efecto = "Refrigerado"
 
             # Registrar estado
             estado = EstadoProducto(
@@ -175,6 +188,7 @@ class SimuladorCadenaFrio:
                 kg_inicial=kg_pescado,
                 kg_actual=max(kg_actual, 0),
                 refrigerado=tiene_frio,
+                efecto=efecto,
             )
             resultado.estados.append(estado)
 

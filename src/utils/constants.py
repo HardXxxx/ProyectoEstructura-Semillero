@@ -114,3 +114,11 @@ ZETA    = 0.05   # peso de la probabilidad de retraso
 
 COSTO_PEAJE_PROMEDIO = 12_000   # COP por peaje promedio
 
+
+
+# ═══════════════════════════════════════════════════════════════
+# EFECTOS DE NODOS ESPECIALES (ADR-04)
+# ═══════════════════════════════════════════════════════════════
+
+FACTOR_DETERIORO_ZONA_D = 1.5        # multiplicador de deterioro al entrar a una zona D
+TIEMPO_TRANSBORDO_MUELLE_H = 0.25    # espera por transbordo fluvial→terrestre en un muelle M

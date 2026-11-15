@@ -88,6 +88,42 @@ def test_dijkstra_nodo_inexistente():
     print("  [✓] test_dijkstra_nodo_inexistente")
 
 
+def test_dijkstra_evitar_restringidos():
+    """Verifica que evitar_restringidos=True evita nodos H intermedios."""
+    g = GrafoLogistico()
+    g.agregar_nodo(Nodo("P01", "Pesca", "P"))
+    g.agregar_nodo(Nodo("H01", "Hábitat", "H", restriccion_ambiental=True))
+    g.agregar_nodo(Nodo("A01", "Acopio", "A"))
+    g.agregar_nodo(Nodo("V01", "Mercado", "V"))
+
+    # Atajo tentador por H01 (0.2h total vs 0.6h por A01)
+    g.agregar_arista(Arista("P01", "H01", distancia_km=2, tiempo_h=0.1))
+    g.agregar_arista(Arista("H01", "V01", distancia_km=2, tiempo_h=0.1))
+    g.agregar_arista(Arista("P01", "A01", distancia_km=5, tiempo_h=0.3))
+    g.agregar_arista(Arista("A01", "V01", distancia_km=5, tiempo_h=0.3))
+
+    dist_libre, camino_libre = dijkstra(
+        g, "P01", "V01", criterio="tiempo_h", evitar_restringidos=False
+    )
+    assert "H01" in camino_libre
+    assert abs(dist_libre - 0.2) < 1e-6
+
+    dist_ev, camino_ev = dijkstra(
+        g, "P01", "V01", criterio="tiempo_h", evitar_restringidos=True
+    )
+    assert "H01" not in camino_ev
+    assert camino_ev == ["P01", "A01", "V01"]
+    assert abs(dist_ev - 0.6) < 1e-6
+
+    # Pero H01 sí puede ser destino directo
+    dist_dest, camino_dest = dijkstra(
+        g, "P01", "H01", criterio="tiempo_h", evitar_restringidos=True
+    )
+    assert camino_dest == ["P01", "H01"]
+    assert abs(dist_dest - 0.1) < 1e-6
+    print("  [✓] test_dijkstra_evitar_restringidos")
+
+
 if __name__ == "__main__":
     print("\n═══ PRUEBAS DE DIJKSTRA ═══\n")
     test_dijkstra_camino_existe()
@@ -95,5 +131,6 @@ if __name__ == "__main__":
     test_dijkstra_sin_camino()
     test_dijkstra_completo()
     test_dijkstra_nodo_inexistente()
+    test_dijkstra_evitar_restringidos()
     print("\n  ✅ Todas las pruebas pasaron.\n")
 
