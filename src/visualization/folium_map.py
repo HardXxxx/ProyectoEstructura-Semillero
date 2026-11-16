@@ -376,9 +376,10 @@ def generar_mapa_interactivo(
 
     # ── Presentación interactiva por diapositivas (Mapa + Grafos Vial, Ríos y Mixto) ──
     try:
-        from .graph_slides import generar_html_slides
+        from .graph_slides import generar_html_slides, generar_presentacion_html_autonoma
         slides_html = generar_html_slides(grafo, geo_cache, itinerarios)
         mapa.get_root().html.add_child(folium.Element(slides_html))
+        generar_presentacion_html_autonoma(grafo, geo_cache, itinerarios)
     except Exception as exc:
         print(f"  [!] No se pudieron inyectar diapositivas de grafos: {exc}")
 
