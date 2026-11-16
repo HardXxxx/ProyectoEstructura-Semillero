@@ -974,27 +974,113 @@ function agySubgrafoActual() {{
   return {{ nodos, aristas }};
 }}
 
+// Proyección geográfica no lineal por tramos (Lupa Focal en Puerto Gaitán / Ruta Meta)
+// Dado que 19 de los 25 nodos están entre lon [-72.12, -72.04] (solo 3% del rango total hasta Bogotá),
+// asignamos el 62% central del lienzo a expandir armónicamente la cuenca de Puerto Gaitán y Ruta Meta.
+function agyInterpolarTramo(val, dom, rng) {{
+  if (val <= dom[0]) return rng[0];
+  if (val >= dom[dom.length - 1]) return rng[rng.length - 1];
+  for (let i = 0; i < dom.length - 1; i++) {{
+    if (val >= dom[i] && val <= dom[i + 1]) {{
+      const t = (val - dom[i]) / ((dom[i + 1] - dom[i]) || 1e-9);
+      return rng[i] + t * (rng[i + 1] - rng[i]);
+    }}
+  }}
+  return rng[0];
+}}
+
+function agyProyectarGeo(lon, lat, W, H, padX, padY) {{
+  // Eje X (Longitud):
+  //   [-74.10 .. -72.20] Corredor Bogotá/Villavicencio/Pto. López -> 4% a 20% del ancho
+  //   [-72.20 .. -72.03] Lupa Cuenca Pto. Gaitán / Ruta Meta / Manacacías -> 24% a 86% del ancho
+  //   [-72.03 .. -71.48] Cuenca Oriental Pto. Trujillo -> 89% a 96% del ancho
+  const domLon = [-74.10, -72.80, -72.13, -72.08, -72.03, -71.48];
+  const rngLon = [0.04,   0.18,   0.27,   0.56,   0.85,   0.95];
+  const nx = agyInterpolarTramo(lon, domLon, rngLon);
+
+  // Eje Y (Latitud, invertido en pantalla: Norte arriba, Sur abajo):
+  //   [4.08 .. 4.26] Ruta Sur y Ruta Meta (F03, D01, M01, P05, M02, D02) -> 60% a 92% de altura
+  //   [4.26 .. 4.36] Casco Urbano, San Miguel y Río Manacacías -> 18% a 60% de altura
+  //   [4.36 .. 4.70] Bogotá Norte -> 6% a 14% de altura
+  const domLat = [4.08, 4.16, 4.25, 4.31, 4.36, 4.70];
+  const rngLat = [0.92, 0.78, 0.62, 0.38, 0.18, 0.06];
+  const ny = agyInterpolarTramo(lat, domLat, rngLat);
+
+  return {{
+    x: padX + nx * (W - 2 * padX),
+    y: padY + ny * (H - 2 * padY)
+  }};
+}}
+
 // Calcula las posiciones objetivo (x, y) según modo Jerárquico o Geográfico
 function agyCalcularPosicionesObjetivo(inmediato) {{
   const svg = document.getElementById("agy-graph-svg");
   const W = svg.clientWidth || 960;
   const H = svg.clientHeight || 640;
-  const padX = 88, padY = 84;
+  const padX = 76, padY = 82;
 
   if (agyLayoutModo === "geo") {{
-    const lats = AGY_DATA.nodos.map(n => n.latitud);
-    const lons = AGY_DATA.nodos.map(n => n.longitud);
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+    const ordenTipo = {{ P: 0, M: 1, A: 2, D: 3, H: 4, F: 5, V: 6 }};
+    const basePos = {{}};
 
-    AGY_DATA.nodos.forEach(n => {{
-      const nx = (n.longitud - minLon) / ((maxLon - minLon) || 1);
-      const ny = 1 - (n.latitud - minLat) / ((maxLat - minLat) || 1);
-      agyTargets[n.id] = {{
-        x: padX + nx * (W - 2 * padX),
-        y: padY + ny * (H - 2 * padY)
+    // 1. Proyección con Lupa Focal sobre Puerto Gaitán y Ruta Meta
+    AGY_DATA.nodos.forEach((n, idx) => {{
+      const p = agyProyectarGeo(n.longitud, n.latitud, W, H, padX, padY);
+      // Desfase determinista inicial por rol logístico para separar nodos con GPS idéntico
+      // (ej. P03/A01, P05/A03, y el clúster urbano P06/M03/F02/V_PG1/V_PG2)
+      const rol = ordenTipo[n.tipo] !== undefined ? ordenTipo[n.tipo] : 3;
+      const ang = (idx * 2.39996) + rol * 0.55;
+      basePos[n.id] = {{
+        x: p.x + (rol - 2.5) * 14 + Math.cos(ang) * 10,
+        y: p.y + Math.sin(ang) * 12
       }};
+      agyTargets[n.id] = {{ x: basePos[n.id].x, y: basePos[n.id].y }};
     }});
+
+    // 2. Relajación elíptica anti-colisión (140 iteraciones) para garantizar armonía visual
+    //    y evitar que los nombres o círculos de Ruta Meta / Casco Urbano se monten entre sí
+    const minSepX = Math.max(92, Math.min(126, W * 0.105));
+    const minSepY = Math.max(62, Math.min(82, H * 0.095));
+    const ids = AGY_DATA.nodos.map(n => n.id);
+
+    for (let iter = 0; iter < 140; iter++) {{
+      for (let i = 0; i < ids.length; i++) {{
+        for (let j = i + 1; j < ids.length; j++) {{
+          const a = agyTargets[ids[i]];
+          const b = agyTargets[ids[j]];
+          let dx = b.x - a.x;
+          let dy = b.y - a.y;
+          if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {{
+            dx = (i % 2 === 0 ? 1 : -1) * 4;
+            dy = (j % 2 === 0 ? 1 : -1) * 4;
+          }}
+          const nx = dx / minSepX;
+          const ny = dy / minSepY;
+          const dEllipse = Math.hypot(nx, ny);
+          if (dEllipse < 1.0) {{
+            const push = (1.0 - dEllipse) * 0.52;
+            const ux = nx / (dEllipse || 1);
+            const uy = ny / (dEllipse || 1);
+            const px = ux * minSepX * push;
+            const py = uy * minSepY * push;
+            a.x -= px;
+            a.y -= py;
+            b.x += px;
+            b.y += py;
+          }}
+        }}
+      }}
+      // Resorte suave hacia su coordenada geográfica focal y límites del lienzo
+      const kAnchor = 0.045;
+      ids.forEach(id => {{
+        const t = agyTargets[id];
+        const b = basePos[id];
+        t.x += (b.x - t.x) * kAnchor;
+        t.y += (b.y - t.y) * kAnchor;
+        t.x = Math.max(padX + 12, Math.min(W - padX - 12, t.x));
+        t.y = Math.max(padY + 6, Math.min(H - padY - 18, t.y));
+      }});
+    }}
   }} else {{
     const columnas = {{ P: 0, M: 1, A: 2, D: 3, H: 3, F: 4, V: 5 }};
     const grupos = {{ 0: [], 1: [], 2: [], 3: [], 4: [], 5: [] }};
@@ -1184,7 +1270,7 @@ function agyRenderizarGrafo() {{
   const svg = document.getElementById("agy-graph-svg");
   const W = svg.clientWidth || 960;
   const H = svg.clientHeight || 640;
-  const padX = 88, padY = 84;
+  const padX = 76, padY = 82;
 
   // Actualizar KPIs superiores (con números tabulares)
   const kpiStrip = document.getElementById("agy-kpi-strip");
@@ -1215,7 +1301,7 @@ function agyRenderizarGrafo() {{
     </div>` : ""}}
   `;
 
-  // Dibujar guías verticales de etapas en Vista Jerárquica
+  // Dibujar guías verticales de etapas en Vista Jerárquica o zonas regionales en Vista Geográfica
   if (agyLayoutModo === "hier") {{
     AGY_ETAPAS_JERARQUICAS.forEach(et => {{
       const x = padX + (et.col / 5) * (W - 2 * padX);
@@ -1240,27 +1326,53 @@ function agyRenderizarGrafo() {{
       lbl.textContent = et.titulo;
       layerGuides.appendChild(lbl);
     }});
+  }} else {{
+    const zonasGeo = [
+      {{ x0: 0.01, x1: 0.21, titulo: "OCCIDENTE · BOGOTÁ / VILLAVICENCIO / PTO. LÓPEZ" }},
+      {{ x0: 0.23, x1: 0.87, titulo: "LUPA FOCAL AMPLIADA · PUERTO GAITÁN, RUTA META Y MANACACÍAS" }},
+      {{ x0: 0.89, x1: 0.99, titulo: "ORIENTE · PTO. TRUJILLO" }}
+    ];
+    zonasGeo.forEach((z, idx) => {{
+      const zx = padX + z.x0 * (W - 2 * padX);
+      const zw = (z.x1 - z.x0) * (W - 2 * padX);
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", zx);
+      rect.setAttribute("y", 56);
+      rect.setAttribute("width", zw);
+      rect.setAttribute("height", H - 108);
+      rect.setAttribute("rx", "10");
+      rect.setAttribute("fill", idx === 1 ? "rgba(56, 189, 248, 0.022)" : "rgba(255, 255, 255, 0.01)");
+      rect.setAttribute("stroke", idx === 1 ? "rgba(56, 189, 248, 0.12)" : "rgba(255, 255, 255, 0.04)");
+      rect.setAttribute("stroke-width", "1");
+      rect.setAttribute("stroke-dasharray", idx === 1 ? "none" : "4,4");
+      layerGuides.appendChild(rect);
+
+      const lbl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      lbl.setAttribute("x", zx + zw / 2);
+      lbl.setAttribute("y", 46);
+      lbl.setAttribute("text-anchor", "middle");
+      lbl.setAttribute("fill", idx === 1 ? "#38bdf8" : "#6b7280");
+      lbl.setAttribute("font-size", "10px");
+      lbl.setAttribute("font-family", "var(--font-mono)");
+      lbl.setAttribute("letter-spacing", "0.05em");
+      lbl.textContent = z.titulo;
+      layerGuides.appendChild(lbl);
+    }});
   }}
 
-  // En modo geográfico (Grafo de Ríos o Mixto), dibujar malla hidrográfica real de rios.shp
+  // En modo geográfico (Grafo de Ríos o Mixto), dibujar malla hidrográfica real proyectada con la misma lupa
   if (agyLayoutModo === "geo" && (agySlideActual === 2 || agySlideActual === 3)) {{
-    const lats = AGY_DATA.nodos.map(n => n.latitud);
-    const lons = AGY_DATA.nodos.map(n => n.longitud);
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-
     (AGY_DATA.rios_lineas || []).forEach(coords => {{
       const pts = coords.map(c => {{
-        const x = padX + ((c[0] - minLon) / ((maxLon - minLon) || 1)) * (W - 2 * padX);
-        const y = padY + (1 - (c[1] - minLat) / ((maxLat - minLat) || 1)) * (H - 2 * padY);
-        return `${{x.toFixed(1)}},${{y.toFixed(1)}}`;
+        const p = agyProyectarGeo(c[0], c[1], W, H, padX, padY);
+        return `${{p.x.toFixed(1)}},${{p.y.toFixed(1)}}`;
       }}).join(" ");
       const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
       poly.setAttribute("points", pts);
       poly.setAttribute("fill", "none");
       poly.setAttribute("stroke", "#0284c7");
       poly.setAttribute("stroke-width", agySlideActual === 2 ? "1.5" : "1.0");
-      poly.setAttribute("stroke-opacity", agySlideActual === 2 ? "0.35" : "0.18");
+      poly.setAttribute("stroke-opacity", agySlideActual === 2 ? "0.32" : "0.16");
       layerRivers.appendChild(poly);
     }});
   }}
@@ -1346,7 +1458,7 @@ function agyRenderizarGrafo() {{
       agyInspeccionarArista(a);
     }});
 
-    // Etiqueta tabular en el punto medio de la curva cuadrática
+    // Etiqueta tabular en el punto medio de la curva cuadrática con halo oscuro anti-colisión
     const lx = 0.25 * p1.x + 0.5 * mx + 0.25 * p2.x;
     const ly = 0.25 * p1.y + 0.5 * my + 0.25 * p2.y;
     const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -1358,6 +1470,7 @@ function agyRenderizarGrafo() {{
     txt.setAttribute("font-family", "var(--font-mono)");
     txt.setAttribute("font-size", "9.5px");
     txt.setAttribute("font-weight", (esSeleccionada || esDeItinerario) ? "700" : "500");
+    txt.setAttribute("style", "paint-order: stroke; stroke: #0a0a0c; stroke-width: 3.5px; stroke-linejoin: round;");
     txt.setAttribute("pointer-events", "none");
     txt.textContent = `${{a.distancia_km}}km·${{a.tiempo_efectivo_h.toFixed(2)}}h`;
 
@@ -1411,13 +1524,14 @@ function agyRenderizarGrafo() {{
     lblId.textContent = n.id;
     gNode.appendChild(lblId);
 
-    // Nombre debajo del círculo
+    // Nombre debajo del círculo con halo oscuro para legibilidad total
     const lblName = document.createElementNS("http://www.w3.org/2000/svg", "text");
     lblName.setAttribute("text-anchor", "middle");
     lblName.setAttribute("dy", "26");
     lblName.setAttribute("fill", "#e5e7eb");
     lblName.setAttribute("font-size", "10.5px");
     lblName.setAttribute("font-weight", "500");
+    lblName.setAttribute("style", "paint-order: stroke; stroke: #0a0a0c; stroke-width: 4px; stroke-linejoin: round;");
     lblName.setAttribute("pointer-events", "none");
     lblName.textContent = n.nombre;
     gNode.appendChild(lblName);
