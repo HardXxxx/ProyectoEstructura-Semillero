@@ -1,14 +1,15 @@
 """
-graph_slides.py — Presentación interactiva por diapositivas para explorar:
+graph_slides.py — Presentación interactiva por diapositivas con diseño de precisión
+(Emil Kowalski UI + Impeccable Design 4/8px + Taste Anti-Slop):
   Diapositiva 1: Mapa Geográfico Interactivo (Folium + OSRM + Ríos)
   Diapositiva 2: Grafo Vial (Subgrafo Terrestre y Acceso Local)
   Diapositiva 3: Grafo de Ríos (Subgrafo Fluvial y Red Hidrográfica Topológica)
   Diapositiva 4: Grafo Mixto Multimodal Completo (25 vértices, 41 aristas, itinerarios y lista de adyacencia)
 
-Permite navegar hacia adelante ("Siguiente →") y hacia atrás ("← Anterior"),
-arrastrar nodos, hacer zoom/paneo, filtrar por categoría y hacer clic sobre
-cualquier vértice o arista para inspeccionar todas las propiedades y variables
-que almacena en memoria.
+Permite navegar hacia adelante ("Siguiente ▶") y hacia atrás ("◀ Anterior"),
+animar transiciones de layout con física de resorte (Jerárquico ↔ Geográfico),
+arrastrar nodos, hacer zoom/paneo y hacer clic sobre cualquier vértice o arista
+para inspeccionar todas las propiedades y variables que almacena en memoria.
 """
 
 from __future__ import annotations
@@ -107,7 +108,6 @@ def construir_datos_slides(
         clave_geo = f"{ar.origen}-{ar.destino}"
         pts_geo = geo_cache.get(clave_geo) or []
         ad["num_puntos_geometria"] = len(pts_geo)
-        # Muestra compactada de puntos para dibujar trazado real en el canvas fluvial/mixto
         if len(pts_geo) > 40:
             paso = max(1, len(pts_geo) // 35)
             muestra = pts_geo[::paso]
@@ -198,6 +198,12 @@ def generar_html_slides(
       - Diapositiva 2: Grafo Vial (Terrestre + Acceso Local)
       - Diapositiva 3: Grafo de Ríos (Fluvial + Red Topológica rios.shp)
       - Diapositiva 4: Grafo Mixto Multimodal Completo
+    Aplicando rigurosamente:
+      - Emil Kowalski UI: curvas cubic-bezier(0.16, 1, 0.3, 1), física spring en cambio de layout,
+        feedback táctil scale(0.97) en 80ms, cascada escalonada en inspector y animaciones de composición.
+      - Impeccable Design: grilla base de 4px/8px, escala tipográfica emparejada, regla 60-30-10.
+      - Taste (Anti-Slop): superficies mate #0a0a0c / #121316, micro-bordes 1px rgba(255,255,255,0.08),
+        cero gradientes inflados y números tabulares obligatorios.
     """
     payload = construir_datos_slides(grafo, geo_cache, itinerarios)
     json_payload = json.dumps(payload, ensure_ascii=False)
@@ -205,9 +211,42 @@ def generar_html_slides(
     return f"""
 <!-- ═══════════════════════════════════════════════════════════════════════
      SISTEMA INTERACTIVO DE DIAPOSITIVAS Y EXPLORADOR DE GRAFOS
+     (Emil Kowalski Motion + Impeccable 4/8px Grid + Anti-Slop Taste)
      ═══════════════════════════════════════════════════════════════════════ -->
 <style>
-  /* Barra superior de navegación de diapositivas */
+  :root {{
+    /* Regla 60-30-10 y Superficies por Capas (Anti-Slop) */
+    --agy-bg-canvas: #0a0a0c;        /* 60% Superficie dominante mate */
+    --agy-bg-panel: #121316;         /* 30% Estructura / Paneles laterales */
+    --agy-bg-elevated: #181a1f;      /* Tarjetas e inputs */
+    --agy-bg-hover: #20232a;         /* Estado hover sutil */
+    --agy-border-subtle: rgba(255, 255, 255, 0.08);
+    --agy-border-strong: rgba(255, 255, 255, 0.16);
+
+    /* Tipografía y Contraste WCAG AA */
+    --agy-text-primary: #f4f4f6;     /* 95% luminosidad */
+    --agy-text-secondary: #9ca3af;   /* 65% luminosidad */
+    --agy-text-muted: #6b7280;
+
+    /* 10% Acento Semántico Intencional */
+    --agy-accent: #38bdf8;
+    --agy-accent-subtle: rgba(56, 189, 248, 0.12);
+    --agy-accent-border: rgba(56, 189, 248, 0.38);
+    --agy-highlight: #facc15;
+
+    /* Curvas y Duraciones Emil Kowalski */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  }}
+
+  /* Números tabulares obligatorios para todo dato cuantitativo */
+  .agy-tabular, .agy-kpi-val, .agy-prop-val, .agy-bar-label, .agy-code-block, #agy-slide-counter {{
+    font-variant-numeric: tabular-nums;
+  }}
+
+  /* Barra superior fija de navegación de diapositivas (Grilla 4/8px) */
   #agy-slide-nav {{
     position: fixed;
     top: 12px;
@@ -217,113 +256,155 @@ def generar_html_slides(
     display: flex;
     align-items: center;
     gap: 8px;
-    background: rgba(15, 23, 42, 0.94);
-    backdrop-filter: blur(10px);
-    color: #f8fafc;
-    padding: 8px 14px;
-    border-radius: 999px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.12);
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: rgba(18, 19, 22, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: var(--agy-text-primary);
+    padding: 6px 8px;
+    border-radius: 12px;
+    border: 1px solid var(--agy-border-subtle);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    font-family: var(--font-sans);
     user-select: none;
   }}
 
   .agy-nav-btn {{
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    color: #fff;
-    border: none;
-    padding: 7px 14px;
-    border-radius: 999px;
-    font-size: 12.5px;
+    background: var(--agy-bg-elevated);
+    color: var(--agy-text-primary);
+    border: 1px solid var(--agy-border-subtle);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 16px;
     font-weight: 600;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    transition: all 0.18s ease;
-    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+    gap: 6px;
+    transition: transform 150ms var(--ease-out-expo),
+                background-color 150ms var(--ease-out-expo),
+                border-color 150ms var(--ease-out-expo);
   }}
   .agy-nav-btn:hover:not(:disabled) {{
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-    transform: translateY(-1px);
+    background: var(--agy-bg-hover);
+    border-color: var(--agy-border-strong);
+  }}
+  .agy-nav-btn:active:not(:disabled) {{
+    transform: scale(0.97);
+    transition-duration: 80ms;
   }}
   .agy-nav-btn:disabled {{
-    background: #334155;
-    color: #64748b;
+    opacity: 0.38;
     cursor: not-allowed;
-    box-shadow: none;
+  }}
+
+  #agy-slide-counter {{
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--agy-text-secondary);
+    padding: 4px 8px;
+    background: var(--agy-bg-canvas);
+    border: 1px solid var(--agy-border-subtle);
+    border-radius: 6px;
+    letter-spacing: 0.02em;
   }}
 
   .agy-slide-tabs {{
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 0 6px;
+    padding: 0 4px;
+    border-left: 1px solid var(--agy-border-subtle);
+    border-right: 1px solid var(--agy-border-subtle);
   }}
 
   .agy-slide-tab {{
     background: transparent;
-    color: #cbd5e1;
+    color: var(--agy-text-secondary);
     border: 1px solid transparent;
     padding: 6px 12px;
-    border-radius: 999px;
+    border-radius: 8px;
     font-size: 12px;
-    font-weight: 600;
+    line-height: 16px;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.18s ease;
+    transition: transform 150ms var(--ease-out-expo),
+                color 150ms var(--ease-out-expo),
+                background-color 150ms var(--ease-out-expo),
+                border-color 150ms var(--ease-out-expo);
     white-space: nowrap;
   }}
   .agy-slide-tab:hover {{
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--agy-text-primary);
+    background: rgba(255, 255, 255, 0.04);
+  }}
+  .agy-slide-tab:active {{
+    transform: scale(0.97);
+    transition-duration: 80ms;
   }}
   .agy-slide-tab.active {{
-    background: rgba(56, 189, 248, 0.18);
-    color: #38bdf8;
-    border-color: rgba(56, 189, 248, 0.45);
-    box-shadow: inset 0 0 12px rgba(56, 189, 248, 0.15);
+    background: var(--agy-accent-subtle);
+    color: var(--agy-accent);
+    border-color: var(--agy-accent-border);
+    font-weight: 600;
   }}
 
-  /* Contenedor de las diapositivas de grafos (2, 3 y 4) */
+  /* Contenedor de las diapositivas de grafos (2, 3 y 4) con regla asimétrica E/S */
   #agy-graph-deck {{
     position: fixed;
     inset: 0;
     z-index: 9500;
-    background: radial-gradient(circle at 20% 20%, #0f172a 0%, #090d16 100%);
-    color: #e2e8f0;
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    display: none;
+    background: var(--agy-bg-canvas);
+    color: var(--agy-text-primary);
+    font-family: var(--font-sans);
+    display: flex;
     flex-direction: column;
-    padding-top: 68px;
+    padding-top: 60px;
     box-sizing: border-box;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px) scale(0.996);
+    /* Salida rápida (160ms) según regla asimétrica Emil Kowalski */
+    transition: opacity 160ms var(--ease-out-expo),
+                transform 160ms var(--ease-out-expo);
   }}
   #agy-graph-deck.visible {{
-    display: flex;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+    /* Entrada suave de 280ms */
+    transition: opacity 280ms var(--ease-out-expo),
+                transform 280ms var(--ease-out-expo);
   }}
 
-  /* Encabezado descriptivo de la diapositiva activa */
+  /* Encabezado descriptivo de la diapositiva activa (paddings 12px / 24px) */
   .agy-deck-header {{
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 24px;
-    background: rgba(30, 41, 59, 0.65);
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    padding: 12px 24px;
+    background: var(--agy-bg-panel);
+    border-bottom: 1px solid var(--agy-border-subtle);
     flex-wrap: wrap;
     gap: 12px;
   }}
   .agy-deck-title-box h2 {{
     margin: 0;
     font-size: 18px;
+    line-height: 28px;
     font-weight: 700;
-    color: #f8fafc;
+    letter-spacing: -0.02em;
+    color: var(--agy-text-primary);
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }}
   .agy-deck-title-box p {{
-    margin: 3px 0 0 0;
-    font-size: 12.5px;
-    color: #94a3b8;
+    margin: 2px 0 0 0;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--agy-text-secondary);
   }}
 
   .agy-deck-controls {{
@@ -333,31 +414,39 @@ def generar_html_slides(
     flex-wrap: wrap;
   }}
   .agy-ctrl-btn, .agy-ctrl-select {{
-    background: #1e293b;
-    color: #e2e8f0;
-    border: 1px solid #334155;
+    background: var(--agy-bg-elevated);
+    color: var(--agy-text-primary);
+    border: 1px solid var(--agy-border-subtle);
     padding: 6px 12px;
     border-radius: 8px;
     font-size: 12px;
+    line-height: 16px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: transform 150ms var(--ease-out-expo),
+                border-color 150ms var(--ease-out-expo),
+                background-color 150ms var(--ease-out-expo);
   }}
   .agy-ctrl-btn:hover, .agy-ctrl-select:hover {{
-    border-color: #38bdf8;
-    color: #fff;
+    border-color: var(--agy-border-strong);
+    background: var(--agy-bg-hover);
+  }}
+  .agy-ctrl-btn:active {{
+    transform: scale(0.97);
+    transition-duration: 80ms;
   }}
   .agy-ctrl-btn.active {{
-    background: #0284c7;
-    border-color: #38bdf8;
-    color: #fff;
+    background: var(--agy-accent-subtle);
+    border-color: var(--agy-accent-border);
+    color: var(--agy-accent);
+    font-weight: 600;
   }}
 
-  /* Cuerpo principal: Lienzo interactivo a la izquierda + Inspector a la derecha */
+  /* Cuerpo principal: Lienzo interactivo a la izquierda + Inspector de 416px (52 * 8px) */
   .agy-deck-body {{
     flex: 1;
     display: grid;
-    grid-template-columns: 1fr 410px;
+    grid-template-columns: 1fr 416px;
     min-height: 0;
     overflow: hidden;
   }}
@@ -367,9 +456,10 @@ def generar_html_slides(
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background:
-      linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
+    background-color: var(--agy-bg-canvas);
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
     background-size: 32px 32px;
   }}
 
@@ -383,66 +473,70 @@ def generar_html_slides(
     cursor: grabbing;
   }}
 
-  /* Tarjetas KPI flotantes sobre el lienzo */
+  /* Tarjetas KPI flotantes sobre el lienzo (Espaciado 8px/12px, Números Tabulares) */
   .agy-kpi-strip {{
     position: absolute;
-    top: 14px;
+    top: 16px;
     left: 16px;
     display: flex;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
     pointer-events: none;
   }}
   .agy-kpi-card {{
-    background: rgba(15, 23, 42, 0.86);
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 10px;
-    padding: 8px 13px;
-    backdrop-filter: blur(6px);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+    background: rgba(18, 19, 22, 0.88);
+    border: 1px solid var(--agy-border-subtle);
+    border-radius: 8px;
+    padding: 8px 12px;
+    backdrop-filter: blur(8px);
   }}
   .agy-kpi-val {{
+    font-family: var(--font-mono);
     font-size: 16px;
+    line-height: 24px;
     font-weight: 700;
-    color: #38bdf8;
+    color: var(--agy-text-primary);
   }}
   .agy-kpi-lbl {{
-    font-size: 10.5px;
-    color: #94a3b8;
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--agy-text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.04em;
   }}
 
   /* Leyenda interactiva inferior del lienzo */
   .agy-canvas-legend {{
     position: absolute;
-    bottom: 14px;
+    bottom: 16px;
     left: 16px;
-    background: rgba(15, 23, 42, 0.9);
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 10px;
-    padding: 10px 14px;
-    font-size: 11.5px;
+    background: rgba(18, 19, 22, 0.92);
+    border: 1px solid var(--agy-border-subtle);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    line-height: 16px;
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
     align-items: center;
-    max-width: calc(100% - 40px);
+    max-width: calc(100% - 32px);
+    backdrop-filter: blur(8px);
   }}
   .agy-leg-item {{
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: #cbd5e1;
+    color: var(--agy-text-secondary);
   }}
   .agy-leg-dot {{
-    width: 11px;
-    height: 11px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     display: inline-block;
   }}
   .agy-leg-line {{
-    width: 22px;
+    width: 20px;
     height: 0;
     display: inline-block;
   }}
@@ -450,81 +544,111 @@ def generar_html_slides(
   /* Ayuda rápida en esquina inferior derecha del lienzo */
   .agy-canvas-hint {{
     position: absolute;
-    bottom: 14px;
+    bottom: 16px;
     right: 16px;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(56, 189, 248, 0.3);
-    color: #bae6fd;
-    padding: 7px 12px;
+    background: rgba(18, 19, 22, 0.92);
+    border: 1px solid var(--agy-border-subtle);
+    color: var(--agy-text-secondary);
+    padding: 8px 12px;
     border-radius: 8px;
-    font-size: 11.5px;
+    font-size: 12px;
+    line-height: 16px;
     pointer-events: none;
   }}
 
   /* Panel lateral derecho: Inspector de Vértices y Aristas */
   .agy-inspector {{
-    background: #0f172a;
-    border-left: 1px solid rgba(148, 163, 184, 0.2);
+    background: var(--agy-bg-panel);
+    border-left: 1px solid var(--agy-border-subtle);
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow: hidden;
   }}
   .agy-inspector-header {{
-    padding: 14px 18px;
-    background: rgba(30, 41, 59, 0.85);
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    padding: 12px 16px;
+    background: var(--agy-bg-elevated);
+    border-bottom: 1px solid var(--agy-border-subtle);
   }}
   .agy-inspector-header h3 {{
     margin: 0;
-    font-size: 14.5px;
-    color: #f8fafc;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    color: var(--agy-text-primary);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
   }}
   .agy-inspector-content {{
     flex: 1;
     overflow-y: auto;
-    padding: 16px 18px;
-    font-size: 12.5px;
-    line-height: 1.5;
+    padding: 16px;
+    font-size: 13px;
+    line-height: 20px;
+  }}
+
+  /* Animación escalonada (Staggering Emil Kowalski) para grupos del inspector */
+  @keyframes agySlideUpFade {{
+    from {{
+      opacity: 0;
+      transform: translateY(6px);
+    }}
+    to {{
+      opacity: 1;
+      transform: translateY(0);
+    }}
   }}
 
   /* Tarjetas dentro del inspector */
   .agy-prop-group {{
-    background: rgba(30, 41, 59, 0.55);
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    border-radius: 10px;
-    padding: 12px 14px;
+    background: var(--agy-bg-elevated);
+    border: 1px solid var(--agy-border-subtle);
+    border-radius: 8px;
+    padding: 12px;
     margin-bottom: 12px;
+    animation: agySlideUpFade 220ms var(--ease-out-expo) both;
   }}
+  .agy-prop-group:nth-child(1) {{ animation-delay: 0ms; }}
+  .agy-prop-group:nth-child(2) {{ animation-delay: 35ms; }}
+  .agy-prop-group:nth-child(3) {{ animation-delay: 70ms; }}
+  .agy-prop-group:nth-child(4) {{ animation-delay: 105ms; }}
+  .agy-prop-group:nth-child(5) {{ animation-delay: 140ms; }}
+  .agy-prop-group:nth-child(6) {{ animation-delay: 175ms; }}
+
   .agy-prop-group h4 {{
     margin: 0 0 8px 0;
-    font-size: 11.5px;
+    font-size: 11px;
+    line-height: 16px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #38bdf8;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
-    padding-bottom: 5px;
+    letter-spacing: 0.05em;
+    color: var(--agy-text-secondary);
+    border-bottom: 1px solid var(--agy-border-subtle);
+    padding-bottom: 6px;
   }}
   .agy-prop-row {{
     display: flex;
     justify-content: space-between;
+    align-items: baseline;
     padding: 4px 0;
-    border-bottom: 1px dashed rgba(148, 163, 184, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     gap: 8px;
   }}
   .agy-prop-row:last-child {{
     border-bottom: none;
   }}
   .agy-prop-key {{
-    color: #94a3b8;
-    font-family: Consolas, monospace;
-    font-size: 11.5px;
+    color: var(--agy-text-secondary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
   }}
   .agy-prop-val {{
-    color: #f1f5f9;
+    color: var(--agy-text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
     font-weight: 600;
     text-align: right;
   }}
@@ -532,29 +656,36 @@ def generar_html_slides(
   .agy-badge {{
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
     font-size: 11px;
-    font-weight: 700;
+    line-height: 16px;
+    font-weight: 600;
+    border: 1px solid var(--agy-border-subtle);
   }}
 
   .agy-effect-box {{
-    background: rgba(56, 189, 248, 0.1);
-    border-left: 3px solid #38bdf8;
-    padding: 9px 11px;
-    border-radius: 6px;
-    color: #e0f2fe;
+    background: var(--agy-accent-subtle);
+    border: 1px solid var(--agy-accent-border);
+    border-left: 3px solid var(--agy-accent);
+    padding: 10px 12px;
+    border-radius: 8px;
+    color: var(--agy-text-primary);
     font-size: 12px;
+    line-height: 18px;
     margin-bottom: 12px;
+    animation: agySlideUpFade 180ms var(--ease-out-expo) both;
   }}
 
   .agy-code-block {{
-    background: #090d16;
-    border: 1px solid #1e293b;
-    border-radius: 8px;
-    padding: 10px;
-    font-family: Consolas, Monaco, monospace;
+    background: var(--agy-bg-canvas);
+    border: 1px solid var(--agy-border-subtle);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: var(--font-mono);
     font-size: 11px;
-    color: #a5f3fc;
+    line-height: 16px;
+    color: #cbd5e1;
     overflow-x: auto;
     white-space: pre;
   }}
@@ -562,57 +693,76 @@ def generar_html_slides(
   .agy-chip-list {{
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
-    margin-top: 4px;
+    gap: 6px;
+    margin-top: 6px;
   }}
   .agy-chip {{
-    background: #1e293b;
-    border: 1px solid #475569;
-    color: #e2e8f0;
-    padding: 2px 8px;
+    background: var(--agy-bg-canvas);
+    border: 1px solid var(--agy-border-subtle);
+    color: var(--agy-text-primary);
+    padding: 4px 8px;
     border-radius: 6px;
+    font-family: var(--font-mono);
     font-size: 11px;
+    line-height: 16px;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: transform 150ms var(--ease-out-expo),
+                border-color 150ms var(--ease-out-expo),
+                background-color 150ms var(--ease-out-expo),
+                color 150ms var(--ease-out-expo);
   }}
   .agy-chip:hover {{
-    border-color: #38bdf8;
-    background: #0f172a;
-    color: #38bdf8;
+    border-color: var(--agy-accent-border);
+    background: var(--agy-accent-subtle);
+    color: var(--agy-accent);
+  }}
+  .agy-chip:active {{
+    transform: scale(0.96);
+    transition-duration: 80ms;
   }}
 
-  /* Barras de progreso de la fórmula multicriterio */
+  /* Barras de progreso de la fórmula multicriterio usando transform: scaleX (60fps) */
+  @keyframes agyScaleBar {{
+    from {{ transform: scaleX(0); }}
+    to {{ transform: scaleX(1); }}
+  }}
   .agy-bar-wrap {{
-    margin: 5px 0;
+    margin: 6px 0;
   }}
   .agy-bar-label {{
     display: flex;
     justify-content: space-between;
+    font-family: var(--font-mono);
     font-size: 11px;
-    color: #cbd5e1;
+    line-height: 16px;
+    color: var(--agy-text-secondary);
   }}
   .agy-bar-bg {{
     height: 6px;
-    background: #1e293b;
+    background: var(--agy-bg-canvas);
+    border: 1px solid var(--agy-border-subtle);
     border-radius: 4px;
     overflow: hidden;
-    margin-top: 2px;
+    margin-top: 4px;
   }}
   .agy-bar-fill {{
     height: 100%;
-    background: linear-gradient(90deg, #38bdf8, #818cf8);
-    border-radius: 4px;
+    background: var(--agy-accent);
+    border-radius: 3px;
+    transform-origin: left center;
+    animation: agyScaleBar 320ms var(--ease-out-expo) both;
   }}
 
   /* Estilos de elementos SVG del grafo */
   .agy-edge-path {{
     fill: none;
     cursor: pointer;
-    transition: stroke-width 0.15s, opacity 0.15s;
+    transition: stroke-width 150ms var(--ease-out-expo),
+                stroke-opacity 150ms var(--ease-out-expo);
   }}
   .agy-edge-path:hover {{
-    stroke-width: 5.5px !important;
-    opacity: 1 !important;
+    stroke-width: 4.5px !important;
+    stroke-opacity: 1 !important;
   }}
   .agy-edge-hit {{
     fill: none;
@@ -624,11 +774,16 @@ def generar_html_slides(
     cursor: pointer;
   }}
   .agy-node-circle {{
-    transition: r 0.15s, stroke-width 0.15s;
+    transition: transform 160ms var(--ease-out-expo),
+                stroke-width 160ms var(--ease-out-expo);
   }}
   .agy-node-group:hover .agy-node-circle {{
-    stroke-width: 4px;
-    filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.85));
+    transform: scale(1.14);
+    stroke-width: 3px;
+  }}
+  .agy-node-group:active .agy-node-circle {{
+    transform: scale(0.95);
+    transition-duration: 80ms;
   }}
 
   @keyframes agyDashFlow {{
@@ -637,7 +792,7 @@ def generar_html_slides(
     }}
   }}
   .agy-route-highlight {{
-    animation: agyDashFlow 1.2s linear infinite;
+    animation: agyDashFlow 1.1s linear infinite;
   }}
 </style>
 
@@ -646,6 +801,7 @@ def generar_html_slides(
   <button id="agy-btn-prev" class="agy-nav-btn" onclick="agyCambiarSlide(agySlideActual - 1)" disabled>
     ◀ Anterior
   </button>
+  <span id="agy-slide-counter">Vista 1 / 4</span>
   <div class="agy-slide-tabs">
     <button class="agy-slide-tab active" data-slide="0" onclick="agyCambiarSlide(0)">
       1. 🗺️ Mapa Geográfico
@@ -674,7 +830,7 @@ def generar_html_slides(
     </div>
     <div class="agy-deck-controls">
       <button id="agy-layout-geo" class="agy-ctrl-btn" onclick="agyCambiarLayout('geo')">
-        📍 Coordenadas Geográficas
+        📍 Vista Geográfica
       </button>
       <button id="agy-layout-hier" class="agy-ctrl-btn active" onclick="agyCambiarLayout('hier')">
         🧬 Vista Jerárquica (P → M → A → F → V)
@@ -686,7 +842,7 @@ def generar_html_slides(
         <option value="">🔍 Ir a Vértice / Arista...</option>
       </select>
       <button class="agy-ctrl-btn" onclick="agyResetVista()">
-        🎯 Centrar Vista
+        ⟲ Centrar
       </button>
     </div>
   </div>
@@ -699,19 +855,20 @@ def generar_html_slides(
       <svg id="agy-graph-svg" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <marker id="arrow-terrestre" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 1 L 10 5 L 0 9 z" fill="#f97316"/>
+            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#f97316"/>
           </marker>
           <marker id="arrow-acceso" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 1 L 10 5 L 0 9 z" fill="#94a3b8"/>
+            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#9ca3af"/>
           </marker>
           <marker id="arrow-fluvial" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8"/>
+            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#38bdf8"/>
           </marker>
-          <marker id="arrow-active" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <marker id="arrow-active" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
             <path d="M 0 1 L 10 5 L 0 9 z" fill="#facc15"/>
           </marker>
         </defs>
         <g id="agy-viewport">
+          <g id="agy-layer-guides"></g>
           <g id="agy-layer-rivers"></g>
           <g id="agy-layer-edges"></g>
           <g id="agy-layer-nodes"></g>
@@ -719,20 +876,20 @@ def generar_html_slides(
       </svg>
 
       <div class="agy-canvas-legend">
-        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#2196F3"></span>Pesca (P)</span>
-        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#9C27B0"></span>Muelle (M)</span>
-        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#FF9800"></span>Acopio (A)</span>
-        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#00BCD4"></span>Frío (F)</span>
-        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#F44336"></span>Deterioro (D)</span>
-        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#4CAF50"></span>Hábitat (H)</span>
-        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#E91E63"></span>Venta (V)</span>
-        <span class="agy-leg-item"><span class="agy-leg-line" style="border-top:3px dashed #38bdf8"></span>Vía Fluvial</span>
-        <span class="agy-leg-item"><span class="agy-leg-line" style="border-top:3px solid #94a3b8"></span>Acceso Local</span>
-        <span class="agy-leg-item"><span class="agy-leg-line" style="border-top:3px solid #f97316"></span>Carretera Terrestre</span>
+        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#38bdf8"></span>Pesca (P)</span>
+        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#a855f7"></span>Muelle (M)</span>
+        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#f59e0b"></span>Acopio (A)</span>
+        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#06b6d4"></span>Frío (F)</span>
+        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#ef4444"></span>Deterioro (D)</span>
+        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#10b981"></span>Hábitat (H)</span>
+        <span class="agy-leg-item"><span class="agy-leg-dot" style="background:#ec4899"></span>Venta (V)</span>
+        <span class="agy-leg-item"><span class="agy-leg-line" style="border-top:2.5px dashed #38bdf8"></span>Vía Fluvial</span>
+        <span class="agy-leg-item"><span class="agy-leg-line" style="border-top:2.5px solid #9ca3af"></span>Acceso Local</span>
+        <span class="agy-leg-item"><span class="agy-leg-line" style="border-top:2.5px solid #22c55e"></span>Terrestre</span>
       </div>
 
       <div class="agy-canvas-hint">
-        💡 <b>Interactivo:</b> Clic en nodo/arista = ver propiedades · Arrastrar nodo = mover · Rueda = zoom · Teclas ← / → = cambiar diapositiva
+        Clic = inspeccionar · Arrastrar nodo = mover · Rueda = zoom · Teclas ← / → = diapositiva
       </div>
     </div>
 
@@ -741,7 +898,7 @@ def generar_html_slides(
       <div class="agy-inspector-header">
         <h3>
           <span id="agy-insp-title">🔎 Inspector de Estructura de Datos</span>
-          <span id="agy-insp-badge" class="agy-badge" style="background:#1e293b;color:#38bdf8;">Grafo Activo</span>
+          <span id="agy-insp-badge" class="agy-badge" style="background:#121316;color:#38bdf8;">Grafo Activo</span>
         </h3>
       </div>
       <div class="agy-inspector-content" id="agy-insp-body"></div>
@@ -753,20 +910,32 @@ def generar_html_slides(
 const AGY_DATA = {json_payload};
 
 const AGY_COLORES_NODO = {{
-  P: "#2196F3",
-  M: "#9C27B0",
-  A: "#FF9800",
-  F: "#00BCD4",
-  D: "#F44336",
-  H: "#4CAF50",
-  V: "#E91E63"
+  P: "#38bdf8",
+  M: "#a855f7",
+  A: "#f59e0b",
+  F: "#06b6d4",
+  D: "#ef4444",
+  H: "#10b981",
+  V: "#ec4899"
 }};
+
+const AGY_ETAPAS_JERARQUICAS = [
+  {{ col: 0, titulo: "1. CAPTURA", sub: "Pesca (P)" }},
+  {{ col: 1, titulo: "2. TRANSBORDO", sub: "Muelles (M)" }},
+  {{ col: 2, titulo: "3. ACOPIO", sub: "Centros (A)" }},
+  {{ col: 3, titulo: "4. CONTROL", sub: "Zonas (D / H)" }},
+  {{ col: 4, titulo: "5. FRÍO", sub: "Plantas (F)" }},
+  {{ col: 5, titulo: "6. DESTINO", sub: "Mercados (V)" }}
+];
 
 let agySlideActual = 0;
 let agyLayoutModo = "hier"; // 'hier' | 'geo'
 let agySeleccion = null;    // {{ tipo: 'nodo'|'arista', id: ... }}
+let agyHoverNodeId = null;
 let agyItinerarioActivo = "";
 let agyPosiciones = {{}};
+let agyTargets = {{}};
+let agySpringAnimId = null;
 let agyTransform = {{ x: 0, y: 0, k: 1 }};
 let agyDraggingNode = null;
 let agyPanning = false;
@@ -805,16 +974,14 @@ function agySubgrafoActual() {{
   return {{ nodos, aristas }};
 }}
 
-// Calcular coordenadas (x, y) en el lienzo según modo Jerárquico o Geográfico
-function agyCalcularPosiciones() {{
+// Calcula las posiciones objetivo (x, y) según modo Jerárquico o Geográfico
+function agyCalcularPosicionesObjetivo(inmediato) {{
   const svg = document.getElementById("agy-graph-svg");
   const W = svg.clientWidth || 960;
   const H = svg.clientHeight || 640;
-  const padX = 85, padY = 70;
+  const padX = 88, padY = 84;
 
   if (agyLayoutModo === "geo") {{
-    // Escalar lat/lon con compresión suave de longitudes lejanas (Villavicencio/Bogotá)
-    // para que tanto la zona local de Puerto Gaitán como Bogotá se vean claros
     const lats = AGY_DATA.nodos.map(n => n.latitud);
     const lons = AGY_DATA.nodos.map(n => n.longitud);
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
@@ -823,24 +990,13 @@ function agyCalcularPosiciones() {{
     AGY_DATA.nodos.forEach(n => {{
       const nx = (n.longitud - minLon) / ((maxLon - minLon) || 1);
       const ny = 1 - (n.latitud - minLat) / ((maxLat - minLat) || 1);
-      agyPosiciones[n.id] = {{
+      agyTargets[n.id] = {{
         x: padX + nx * (W - 2 * padX),
         y: padY + ny * (H - 2 * padY)
       }};
     }});
   }} else {{
-    // Disposición jerárquica por etapas de la cadena logística:
-    // Col 0: P (Pesca) -> Col 1: M (Muelles) -> Col 2: A (Acopios)
-    // Col 3: D / H (Zonas críticas y hábitats) -> Col 4: F (Frío) -> Col 5: V (Mercados)
-    const columnas = {{
-      P: 0,
-      M: 1,
-      A: 2,
-      D: 3,
-      H: 3,
-      F: 4,
-      V: 5
-    }};
+    const columnas = {{ P: 0, M: 1, A: 2, D: 3, H: 3, F: 4, V: 5 }};
     const grupos = {{ 0: [], 1: [], 2: [], 3: [], 4: [], 5: [] }};
     AGY_DATA.nodos.forEach(n => {{
       const c = columnas[n.tipo] !== undefined ? columnas[n.tipo] : 3;
@@ -851,10 +1007,52 @@ function agyCalcularPosiciones() {{
       const x = padX + (Number(c) / 5) * (W - 2 * padX);
       lista.forEach((n, idx) => {{
         const y = padY + ((idx + 0.5) / Math.max(lista.length, 1)) * (H - 2 * padY);
-        agyPosiciones[n.id] = {{ x, y }};
+        agyTargets[n.id] = {{ x, y }};
       }});
     }});
   }}
+
+  if (inmediato || Object.keys(agyPosiciones).length === 0) {{
+    AGY_DATA.nodos.forEach(n => {{
+      agyPosiciones[n.id] = {{ x: agyTargets[n.id].x, y: agyTargets[n.id].y }};
+    }});
+  }} else {{
+    agyIniciarAnimacionSpring();
+  }}
+}}
+
+// Motor ligero de física de resortes (Emil Kowalski Spring) para transición fluida de layouts
+function agyIniciarAnimacionSpring() {{
+  if (agySpringAnimId) cancelAnimationFrame(agySpringAnimId);
+  const factor = 0.24; // Amortiguamiento exponencial rápido (snappy)
+
+  function step() {{
+    let maxDelta = 0;
+    AGY_DATA.nodos.forEach(n => {{
+      const cur = agyPosiciones[n.id];
+      const tgt = agyTargets[n.id];
+      if (!cur || !tgt) return;
+      const dx = tgt.x - cur.x;
+      const dy = tgt.y - cur.y;
+      maxDelta = Math.max(maxDelta, Math.abs(dx), Math.abs(dy));
+      cur.x += dx * factor;
+      cur.y += dy * factor;
+    }});
+    agyRenderizarGrafo();
+    if (maxDelta > 0.4) {{
+      agySpringAnimId = requestAnimationFrame(step);
+    }} else {{
+      AGY_DATA.nodos.forEach(n => {{
+        if (agyTargets[n.id]) {{
+          agyPosiciones[n.id].x = agyTargets[n.id].x;
+          agyPosiciones[n.id].y = agyTargets[n.id].y;
+        }}
+      }});
+      agyRenderizarGrafo();
+      agySpringAnimId = null;
+    }}
+  }}
+  agySpringAnimId = requestAnimationFrame(step);
 }}
 
 function agyActualizarTransform() {{
@@ -866,15 +1064,17 @@ function agyActualizarTransform() {{
 
 function agyResetVista() {{
   agyTransform = {{ x: 0, y: 0, k: 1 }};
-  agyCalcularPosiciones();
-  agyRenderizarGrafo();
+  agyActualizarTransform();
+  agyCalcularPosicionesObjetivo(false);
 }}
 
 function agyCambiarLayout(modo) {{
   agyLayoutModo = modo;
   document.getElementById("agy-layout-geo").classList.toggle("active", modo === "geo");
   document.getElementById("agy-layout-hier").classList.toggle("active", modo === "hier");
-  agyResetVista();
+  agyTransform = {{ x: 0, y: 0, k: 1 }};
+  agyActualizarTransform();
+  agyCalcularPosicionesObjetivo(false);
 }}
 
 function agyCambiarSlide(nuevoSlide) {{
@@ -883,6 +1083,7 @@ function agyCambiarSlide(nuevoSlide) {{
 
   document.getElementById("agy-btn-prev").disabled = (agySlideActual === 0);
   document.getElementById("agy-btn-next").disabled = (agySlideActual === 3);
+  document.getElementById("agy-slide-counter").textContent = `Vista ${{agySlideActual + 1}} / 4`;
 
   document.querySelectorAll(".agy-slide-tab").forEach(btn => {{
     btn.classList.toggle("active", Number(btn.dataset.slide) === agySlideActual);
@@ -896,7 +1097,6 @@ function agyCambiarSlide(nuevoSlide) {{
 
   deck.classList.add("visible");
 
-  // Configurar títulos según la diapositiva
   const titulos = {{
     1: [
       "🛣️ Diapositiva 2: Grafo Vial (Subgrafo Terrestre y de Acceso Local)",
@@ -914,8 +1114,7 @@ function agyCambiarSlide(nuevoSlide) {{
   document.getElementById("agy-slide-title").textContent = titulos[agySlideActual][0];
   document.getElementById("agy-slide-subtitle").textContent = titulos[agySlideActual][1];
 
-  // En el grafo de ríos, si el usuario quiere ver la red geográfica de fondo, funciona en ambos layouts
-  agyCalcularPosiciones();
+  agyCalcularPosicionesObjetivo(true);
   agyActualizarSelectorRapido();
   agyRenderizarGrafo();
   agyMostrarResumenSubgrafo();
@@ -970,17 +1169,24 @@ function agySeleccionarItinerario(origenId) {{
   }}
 }}
 
-// Renderiza el SVG interactivo con ríos de fondo, aristas curvas dirigidas y nodos arrastrables
+// Renderiza el SVG interactivo con guías de etapa, ríos de fondo, aristas curvas dirigidas y nodos arrastrables
 function agyRenderizarGrafo() {{
   const {{ nodos, aristas }} = agySubgrafoActual();
+  const layerGuides = document.getElementById("agy-layer-guides");
   const layerRivers = document.getElementById("agy-layer-rivers");
   const layerEdges = document.getElementById("agy-layer-edges");
   const layerNodes = document.getElementById("agy-layer-nodes");
+  layerGuides.innerHTML = "";
   layerRivers.innerHTML = "";
   layerEdges.innerHTML = "";
   layerNodes.innerHTML = "";
 
-  // Actualizar KPIs superiores
+  const svg = document.getElementById("agy-graph-svg");
+  const W = svg.clientWidth || 960;
+  const H = svg.clientHeight || 640;
+  const padX = 88, padY = 84;
+
+  // Actualizar KPIs superiores (con números tabulares)
   const kpiStrip = document.getElementById("agy-kpi-strip");
   const kmTotal = aristas.reduce((s, a) => s + a.distancia_km, 0);
   const fluvCount = aristas.filter(a => a.tipo_via === "fluvial").length;
@@ -988,33 +1194,56 @@ function agyRenderizarGrafo() {{
   kpiStrip.innerHTML = `
     <div class="agy-kpi-card">
       <div class="agy-kpi-val">${{nodos.length}}</div>
-      <div class="agy-kpi-lbl">Vértices Activos</div>
+      <div class="agy-kpi-lbl">Vértices |V|</div>
     </div>
     <div class="agy-kpi-card">
       <div class="agy-kpi-val">${{aristas.length}}</div>
-      <div class="agy-kpi-lbl">Aristas Dirigidas</div>
+      <div class="agy-kpi-lbl">Aristas |E|</div>
     </div>
     <div class="agy-kpi-card">
       <div class="agy-kpi-val">${{vialCount}} / ${{fluvCount}}</div>
-      <div class="agy-kpi-lbl">Viales / Fluviales</div>
+      <div class="agy-kpi-lbl">Vial / Fluvial</div>
     </div>
     <div class="agy-kpi-card">
       <div class="agy-kpi-val">${{kmTotal.toFixed(1)}} km</div>
-      <div class="agy-kpi-lbl">Longitud Acumulada</div>
+      <div class="agy-kpi-lbl">Red Activa</div>
     </div>
     ${{agySlideActual === 2 ? `
     <div class="agy-kpi-card">
       <div class="agy-kpi-val">${{AGY_DATA.stats_rio.vertices.toLocaleString()}}</div>
-      <div class="agy-kpi-lbl">Vértices rios.shp</div>
+      <div class="agy-kpi-lbl">Nodos rios.shp</div>
     </div>` : ""}}
   `;
 
-  // Si estamos en modo geográfico y en el Grafo de Ríos o Mixto, dibujar la malla hidrográfica de fondo
+  // Dibujar guías verticales de etapas en Vista Jerárquica
+  if (agyLayoutModo === "hier") {{
+    AGY_ETAPAS_JERARQUICAS.forEach(et => {{
+      const x = padX + (et.col / 5) * (W - 2 * padX);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", x);
+      line.setAttribute("y1", 60);
+      line.setAttribute("x2", x);
+      line.setAttribute("y2", H - 48);
+      line.setAttribute("stroke", "rgba(255,255,255,0.04)");
+      line.setAttribute("stroke-width", "1");
+      line.setAttribute("stroke-dasharray", "4,4");
+      layerGuides.appendChild(line);
+
+      const lbl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      lbl.setAttribute("x", x);
+      lbl.setAttribute("y", 48);
+      lbl.setAttribute("text-anchor", "middle");
+      lbl.setAttribute("fill", "#6b7280");
+      lbl.setAttribute("font-size", "10px");
+      lbl.setAttribute("font-family", "var(--font-mono)");
+      lbl.setAttribute("letter-spacing", "0.06em");
+      lbl.textContent = et.titulo;
+      layerGuides.appendChild(lbl);
+    }});
+  }}
+
+  // En modo geográfico (Grafo de Ríos o Mixto), dibujar malla hidrográfica real de rios.shp
   if (agyLayoutModo === "geo" && (agySlideActual === 2 || agySlideActual === 3)) {{
-    const svg = document.getElementById("agy-graph-svg");
-    const W = svg.clientWidth || 960;
-    const H = svg.clientHeight || 640;
-    const padX = 85, padY = 70;
     const lats = AGY_DATA.nodos.map(n => n.latitud);
     const lons = AGY_DATA.nodos.map(n => n.longitud);
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
@@ -1030,8 +1259,8 @@ function agyRenderizarGrafo() {{
       poly.setAttribute("points", pts);
       poly.setAttribute("fill", "none");
       poly.setAttribute("stroke", "#0284c7");
-      poly.setAttribute("stroke-width", agySlideActual === 2 ? "1.6" : "1.0");
-      poly.setAttribute("stroke-opacity", agySlideActual === 2 ? "0.38" : "0.22");
+      poly.setAttribute("stroke-width", agySlideActual === 2 ? "1.5" : "1.0");
+      poly.setAttribute("stroke-opacity", agySlideActual === 2 ? "0.35" : "0.18");
       layerRivers.appendChild(poly);
     }});
   }}
@@ -1058,14 +1287,14 @@ function agyRenderizarGrafo() {{
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const dist = Math.hypot(dx, dy) || 1;
-    // Curvatura suave para distinguir aristas y mejorar legibilidad
-    const offset = Math.min(26, dist * 0.12);
+    const offset = Math.min(24, dist * 0.11);
     const mx = (p1.x + p2.x) / 2 - (dy / dist) * offset;
     const my = (p1.y + p2.y) / 2 + (dx / dist) * offset;
     const pathD = `M ${{p1.x}} ${{p1.y}} Q ${{mx}} ${{my}} ${{p2.x}} ${{p2.y}}`;
 
     const esSeleccionada = agySeleccion && agySeleccion.tipo === "arista" && agySeleccion.id === a.id;
     const esDeItinerario = aristasItinerario.has(a.id);
+    const esVecinaHover = agyHoverNodeId && (a.origen === agyHoverNodeId || a.destino === agyHoverNodeId);
 
     let stroke = "#f97316";
     let marker = "url(#arrow-terrestre)";
@@ -1073,9 +1302,9 @@ function agyRenderizarGrafo() {{
     if (a.tipo_via === "fluvial") {{
       stroke = "#38bdf8";
       marker = "url(#arrow-fluvial)";
-      dash = "7,5";
+      dash = "6,4";
     }} else if (a.tipo_via === "acceso_local") {{
-      stroke = "#94a3b8";
+      stroke = "#9ca3af";
       marker = "url(#arrow-acceso)";
       dash = a.estado_via === "regular" ? "4,4" : "";
     }} else {{
@@ -1087,14 +1316,23 @@ function agyRenderizarGrafo() {{
       marker = "url(#arrow-active)";
     }}
 
+    let opacidad = "0.82";
+    if (agyItinerarioActivo && !esDeItinerario && !esSeleccionada) {{
+      opacidad = "0.18";
+    }} else if (agyHoverNodeId && !esVecinaHover && !esSeleccionada) {{
+      opacidad = "0.22";
+    }} else if (esVecinaHover || esSeleccionada || esDeItinerario) {{
+      opacidad = "1";
+    }}
+
     const gEdge = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
     const pathVis = document.createElementNS("http://www.w3.org/2000/svg", "path");
     pathVis.setAttribute("d", pathD);
     pathVis.setAttribute("class", "agy-edge-path" + (esDeItinerario ? " agy-route-highlight" : ""));
     pathVis.setAttribute("stroke", stroke);
-    pathVis.setAttribute("stroke-width", (esSeleccionada || esDeItinerario) ? "4.5" : "2.4");
-    pathVis.setAttribute("stroke-opacity", (agyItinerarioActivo && !esDeItinerario && !esSeleccionada) ? "0.25" : "0.88");
+    pathVis.setAttribute("stroke-width", (esSeleccionada || esDeItinerario) ? "4" : (esVecinaHover ? "3" : "2"));
+    pathVis.setAttribute("stroke-opacity", opacidad);
     if (dash || esDeItinerario) {{
       pathVis.setAttribute("stroke-dasharray", esDeItinerario ? "10,6" : dash);
     }}
@@ -1108,18 +1346,20 @@ function agyRenderizarGrafo() {{
       agyInspeccionarArista(a);
     }});
 
-    // Etiqueta de la arista en el punto medio de la curva cuadrática
+    // Etiqueta tabular en el punto medio de la curva cuadrática
     const lx = 0.25 * p1.x + 0.5 * mx + 0.25 * p2.x;
     const ly = 0.25 * p1.y + 0.5 * my + 0.25 * p2.y;
     const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
     txt.setAttribute("x", lx);
     txt.setAttribute("y", ly - 4);
     txt.setAttribute("text-anchor", "middle");
-    txt.setAttribute("fill", (esSeleccionada || esDeItinerario) ? "#fef08a" : "#cbd5e1");
+    txt.setAttribute("fill", (esSeleccionada || esDeItinerario) ? "#fef08a" : "#9ca3af");
+    txt.setAttribute("fill-opacity", opacidad);
+    txt.setAttribute("font-family", "var(--font-mono)");
     txt.setAttribute("font-size", "9.5px");
     txt.setAttribute("font-weight", (esSeleccionada || esDeItinerario) ? "700" : "500");
     txt.setAttribute("pointer-events", "none");
-    txt.textContent = `${{a.distancia_km}}km · ${{a.tiempo_efectivo_h.toFixed(2)}}h`;
+    txt.textContent = `${{a.distancia_km}}km·${{a.tiempo_efectivo_h.toFixed(2)}}h`;
 
     gEdge.appendChild(pathVis);
     gEdge.appendChild(pathHit);
@@ -1143,27 +1383,28 @@ function agyRenderizarGrafo() {{
     // Halo exterior para zonas D (deterioro) y H (hábitat restringido) o nodo seleccionado
     if (n.tipo === "D" || n.tipo === "H" || esSeleccionado || esDeItin) {{
       const halo = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      halo.setAttribute("r", esSeleccionado ? "24" : "21");
-      halo.setAttribute("fill", n.tipo === "D" ? "rgba(244,67,54,0.18)" : (n.tipo === "H" ? "rgba(76,175,80,0.18)" : "rgba(250,204,21,0.2)"));
-      halo.setAttribute("stroke", esSeleccionado ? "#facc15" : (n.tipo === "H" ? "#ef4444" : color));
-      halo.setAttribute("stroke-width", "1.8");
-      if (n.tipo === "H") halo.setAttribute("stroke-dasharray", "4,3");
+      halo.setAttribute("r", esSeleccionado ? "22" : "19");
+      halo.setAttribute("fill", n.tipo === "D" ? "rgba(239,68,68,0.14)" : (n.tipo === "H" ? "rgba(16,185,129,0.14)" : "rgba(250,204,21,0.16)"));
+      halo.setAttribute("stroke", esSeleccionado ? "#facc15" : (n.tipo === "H" ? "#10b981" : color));
+      halo.setAttribute("stroke-width", "1.5");
+      if (n.tipo === "H") halo.setAttribute("stroke-dasharray", "3,3");
       gNode.appendChild(halo);
     }}
 
     const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     circle.setAttribute("class", "agy-node-circle");
-    circle.setAttribute("r", "14");
-    circle.setAttribute("fill", color);
-    circle.setAttribute("stroke", esSeleccionado ? "#facc15" : "#f8fafc");
-    circle.setAttribute("stroke-width", esSeleccionado ? "3.5" : "2");
+    circle.setAttribute("r", "13");
+    circle.setAttribute("fill", "#121316");
+    circle.setAttribute("stroke", esSeleccionado ? "#facc15" : color);
+    circle.setAttribute("stroke-width", esSeleccionado ? "3.2" : "2.4");
     gNode.appendChild(circle);
 
     // Código del vértice dentro del círculo
     const lblId = document.createElementNS("http://www.w3.org/2000/svg", "text");
     lblId.setAttribute("text-anchor", "middle");
     lblId.setAttribute("dy", "3.5");
-    lblId.setAttribute("fill", "#ffffff");
+    lblId.setAttribute("fill", esSeleccionado ? "#facc15" : "#f4f4f6");
+    lblId.setAttribute("font-family", "var(--font-mono)");
     lblId.setAttribute("font-size", "9.5px");
     lblId.setAttribute("font-weight", "700");
     lblId.setAttribute("pointer-events", "none");
@@ -1173,17 +1414,33 @@ function agyRenderizarGrafo() {{
     // Nombre debajo del círculo
     const lblName = document.createElementNS("http://www.w3.org/2000/svg", "text");
     lblName.setAttribute("text-anchor", "middle");
-    lblName.setAttribute("dy", "27");
-    lblName.setAttribute("fill", "#f1f5f9");
+    lblName.setAttribute("dy", "26");
+    lblName.setAttribute("fill", "#e5e7eb");
     lblName.setAttribute("font-size", "10.5px");
-    lblName.setAttribute("font-weight", "600");
+    lblName.setAttribute("font-weight", "500");
     lblName.setAttribute("pointer-events", "none");
     lblName.textContent = n.nombre;
     gNode.appendChild(lblName);
 
-    // Eventos de clic (inspeccionar) y arrastre (mover nodo)
+    // Eventos de hover, clic y arrastre
+    gNode.addEventListener("mouseenter", () => {{
+      if (!agyDraggingNode) {{
+        agyHoverNodeId = n.id;
+        agyRenderizarGrafo();
+      }}
+    }});
+    gNode.addEventListener("mouseleave", () => {{
+      if (agyHoverNodeId === n.id) {{
+        agyHoverNodeId = null;
+        agyRenderizarGrafo();
+      }}
+    }});
     gNode.addEventListener("mousedown", (ev) => {{
       ev.stopPropagation();
+      if (agySpringAnimId) {{
+        cancelAnimationFrame(agySpringAnimId);
+        agySpringAnimId = null;
+      }}
       agyDraggingNode = n.id;
     }});
     gNode.addEventListener("click", (ev) => {{
@@ -1202,10 +1459,9 @@ function agyMostrarResumenSubgrafo() {{
   document.getElementById("agy-insp-title").textContent = "🔎 Estructura del Grafo en Memoria";
   const badge = document.getElementById("agy-insp-badge");
   badge.textContent = `${{nodos.length}} V · ${{aristas.length}} E`;
-  badge.style.background = "#1e293b";
+  badge.style.background = "#121316";
   badge.style.color = "#38bdf8";
 
-  // Construir vista de la Lista de Adyacencia real (_adyacencia)
   const adjLines = nodos.map(n => {{
     const salientes = aristas.filter(a => a.origen === n.id).map(a => `${{a.destino}}(w=${{a.peso_combinado.toFixed(3)}})`).join(", ");
     return `_adyacencia["${{n.id}}"] -> [${{salientes}}]`;
@@ -1221,14 +1477,14 @@ function agyMostrarResumenSubgrafo() {{
 
   document.getElementById("agy-insp-body").innerHTML = `
     <div class="agy-effect-box">
-      👆 <b>Haz clic sobre cualquier vértice (círculo) o arista (flecha)</b> en el lienzo para inspeccionar todas las variables y propiedades que almacena ese objeto en Python.
+      <b>Haz clic sobre cualquier vértice o arista</b> en el lienzo para inspeccionar todas las variables y propiedades que almacena ese objeto en Python.
     </div>
 
     <div class="agy-prop-group">
       <h4>📐 Resumen Matemático de Esta Vista</h4>
       <div class="agy-prop-row"><span class="agy-prop-key">Vértices |V|</span><span class="agy-prop-val">${{nodos.length}} nodos</span></div>
       <div class="agy-prop-row"><span class="agy-prop-key">Aristas dirigidas |E|</span><span class="agy-prop-val">${{aristas.length}} arcos</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Representación</span><span class="agy-prop-val">Lista de Adyacencia O(|V|+|E|)</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Representación</span><span class="agy-prop-val">Lista Adyacencia O(|V|+|E|)</span></div>
       <div class="agy-prop-row"><span class="agy-prop-key">Fórmula de peso w_ij</span><span class="agy-prop-val">6 factores (22 variables)</span></div>
     </div>
 
@@ -1257,19 +1513,19 @@ function agyInspeccionarNodo(n) {{
   document.getElementById("agy-insp-title").textContent = `📍 Vértice ${{n.id}}: ${{n.nombre}}`;
   const badge = document.getElementById("agy-insp-badge");
   badge.textContent = `Tipo ${{n.tipo}} · ${{n.tipo_descripcion}}`;
-  badge.style.background = AGY_COLORES_NODO[n.tipo] || "#334155";
-  badge.style.color = "#fff";
+  badge.style.background = "#121316";
+  badge.style.color = AGY_COLORES_NODO[n.tipo] || "#38bdf8";
 
   const aristasSalientes = AGY_DATA.aristas.filter(a => a.origen === n.id);
   const aristasEntrantes = AGY_DATA.aristas.filter(a => a.destino === n.id);
 
   const chipsSalientes = aristasSalientes.length
     ? aristasSalientes.map(a => `<span class="agy-chip" onclick="agySeleccionarElementoRapido('E:${{a.id}}')">→ ${{a.destino}} (${{a.tipo_via}}, ${{a.distancia_km}} km, w=${{a.peso_combinado.toFixed(3)}})</span>`).join("")
-    : `<span style="color:#64748b">Ninguna (grado de salida = 0)</span>`;
+    : `<span style="color:#6b7280;font-size:11px;">Ninguna (grado de salida = 0)</span>`;
 
   const chipsEntrantes = aristasEntrantes.length
     ? aristasEntrantes.map(a => `<span class="agy-chip" onclick="agySeleccionarElementoRapido('E:${{a.id}}')">← ${{a.origen}} (${{a.tipo_via}}, ${{a.distancia_km}} km)</span>`).join("")
-    : `<span style="color:#64748b">Ninguna (grado de entrada = 0)</span>`;
+    : `<span style="color:#6b7280;font-size:11px;">Ninguna (grado de entrada = 0)</span>`;
 
   const pythonObj = JSON.stringify({{
     id: n.id,
@@ -1289,7 +1545,7 @@ function agyInspeccionarNodo(n) {{
 
   document.getElementById("agy-insp-body").innerHTML = `
     <div class="agy-effect-box">
-      <b>⚡ Efecto real de este vértice en el grafo:</b><br>
+      <b>⚡ Efecto algorítmico en el grafo:</b><br>
       ${{n.efecto_vertice}}
     </div>
 
@@ -1324,9 +1580,9 @@ function agyInspeccionarNodo(n) {{
       <h4>4. Topología en la Lista de Adyacencia</h4>
       <div class="agy-prop-row"><span class="agy-prop-key">Grado de Entrada (deg⁻)</span><span class="agy-prop-val">${{n.grado_entrada}} aristas entrantes</span></div>
       <div class="agy-prop-row"><span class="agy-prop-key">Grado de Salida (deg⁺)</span><span class="agy-prop-val">${{n.grado_salida}} aristas salientes</span></div>
-      <div style="margin-top:8px;color:#94a3b8;font-size:11px;">Aristas que salen de ${{n.id}}:</div>
+      <div style="margin-top:8px;color:#9ca3af;font-size:11px;">Aristas que salen de ${{n.id}}:</div>
       <div class="agy-chip-list">${{chipsSalientes}}</div>
-      <div style="margin-top:8px;color:#94a3b8;font-size:11px;">Aristas que llegan a ${{n.id}}:</div>
+      <div style="margin-top:8px;color:#9ca3af;font-size:11px;">Aristas que llegan a ${{n.id}}:</div>
       <div class="agy-chip-list">${{chipsEntrantes}}</div>
     </div>
 
@@ -1348,8 +1604,8 @@ function agyInspeccionarArista(a) {{
   document.getElementById("agy-insp-title").textContent = `🔗 Arista #${{String(a.idx).padStart(2, '0')}}: ${{a.origen}} → ${{a.destino}}`;
   const badge = document.getElementById("agy-insp-badge");
   badge.textContent = `${{a.tipo_via}} (${{a.estado_via}})`;
-  badge.style.background = a.tipo_via === "fluvial" ? "#0284c7" : (a.tipo_via === "acceso_local" ? "#475569" : "#ea580c");
-  badge.style.color = "#fff";
+  badge.style.background = "#121316";
+  badge.style.color = a.tipo_via === "fluvial" ? "#38bdf8" : (a.tipo_via === "acceso_local" ? "#9ca3af" : "#22c55e");
 
   const w = a.peso_combinado || 0.0001;
   const d = a.desglose_peso;
@@ -1359,7 +1615,7 @@ function agyInspeccionarArista(a) {{
     <div class="agy-effect-box">
       <b>${{nO ? nO.nombre : a.origen}} (${{a.origen}}) ➔ ${{nD ? nD.nombre : a.destino}} (${{a.destino}})</b><br>
       Geometría real almacenada: <b>${{a.num_puntos_geometria}} coordenadas GPS</b> (${{a.tipo_via === "fluvial" ? "Cauce hidrográfico rios.shp" : "Trazado vial OSRM"}}).
-      <div class="agy-chip-list" style="margin-top:6px;">
+      <div class="agy-chip-list" style="margin-top:8px;">
         <span class="agy-chip" onclick="agySeleccionarElementoRapido('N:${{a.origen}}')">📍 Ver origen ${{a.origen}}</span>
         <span class="agy-chip" onclick="agySeleccionarElementoRapido('N:${{a.destino}}')">🏁 Ver destino ${{a.destino}}</span>
       </div>
@@ -1436,8 +1692,8 @@ function agyInspeccionarItinerario(it) {{
   document.getElementById("agy-insp-title").textContent = `🐟 Itinerario ${{it.origen_id}} → ${{it.destino_id}}`;
   const badge = document.getElementById("agy-insp-badge");
   badge.textContent = `${{it.distancia_total_km}} km · ${{it.tiempo_total_h}} h`;
-  badge.style.background = "#ca8a04";
-  badge.style.color = "#fff";
+  badge.style.background = "#121316";
+  badge.style.color = "#facc15";
 
   const filasTramos = (it.tramos || []).map((t, i) => `
     <div class="agy-prop-row" style="cursor:pointer" onclick="agySeleccionarElementoRapido('E:${{t.origen}}->${{t.destino}}')">
@@ -1453,7 +1709,7 @@ function agyInspeccionarItinerario(it) {{
     </div>
     <div class="agy-prop-group">
       <h4>📊 Métricas Consolidadas del Recorrido</h4>
-      <div class="agy-prop-row"><span class="agy-prop-key">Acopio asignado</span><span class="agy-prop-val">${{it.acopio_id || " Directo urbano"}}</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Acopio asignado</span><span class="agy-prop-val">${{it.acopio_id || "Directo urbano"}}</span></div>
       <div class="agy-prop-row"><span class="agy-prop-key">Centro de Frío</span><span class="agy-prop-val">${{it.centro_frio_id}}</span></div>
       <div class="agy-prop-row"><span class="agy-prop-key">Distancia Total</span><span class="agy-prop-val">${{it.distancia_total_km}} km</span></div>
       <div class="agy-prop-row"><span class="agy-prop-key">Tiempo Total</span><span class="agy-prop-val">${{it.tiempo_total_h}} h</span></div>
@@ -1483,6 +1739,9 @@ function agyInspeccionarItinerario(it) {{
       const x = (ev.clientX - rect.left - agyTransform.x) / agyTransform.k;
       const y = (ev.clientY - rect.top - agyTransform.y) / agyTransform.k;
       agyPosiciones[agyDraggingNode] = {{ x, y }};
+      if (agyTargets[agyDraggingNode]) {{
+        agyTargets[agyDraggingNode] = {{ x, y }};
+      }}
       agyRenderizarGrafo();
     }} else if (agyPanning) {{
       agyTransform.x = ev.clientX - agyPanStart.x;
