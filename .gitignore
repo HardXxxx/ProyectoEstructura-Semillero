@@ -41,6 +41,9 @@ htmlcov/
 # Datos generados
 data/output/*
 !data/output/.gitkeep
+!data/output/presentacion_red_logistica.html
+!data/output/mapa_interactivo.html
+!data/output/rutas_cache.json
 
 # Logs
 *.log
