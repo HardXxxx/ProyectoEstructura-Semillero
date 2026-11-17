@@ -1,4 +1,4 @@
-﻿"""Pruebas de la red fluvial real."""
+"""Pruebas de la red fluvial real."""
 import pytest
 
 pytest.importorskip("geopandas")
@@ -25,7 +25,7 @@ def test_ruta_mismo_rio():
             if v not in visitados:
                 visitados.add(v)
                 pila.append(v)
-    b = pila[0] if pila else a
+    b = pila[-1] if pila else a
     res = red.ruta(a[1], a[0], b[1], b[0])
     assert res is not None
     coords, km = res

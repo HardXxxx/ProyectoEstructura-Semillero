@@ -87,6 +87,15 @@ def generar_mapa_interactivo(
     str : ruta absoluta del archivo HTML generado.
     """
     geo_cache = geometrias_reales or {}
+    if not geo_cache:
+        # Sin geometrías explícitas: usar la caché de vías/cauces reales
+        ruta_cache = OUTPUT_DIR / "rutas_cache.json"
+        if ruta_cache.exists():
+            try:
+                with open(ruta_cache, "r", encoding="utf-8") as f:
+                    geo_cache = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                geo_cache = {}
 
     # ── Calcular centro del mapa ─────────────────────────────
     lats = [n.latitud for n in grafo.nodos if n.latitud != 0]
@@ -360,11 +369,11 @@ def generar_mapa_interactivo(
 
     # ── Título ───────────────────────────────────────────────
     titulo_html = """
-    <div style="position:fixed; top:10px; left:60px; z-index:1000;
-         background:white; padding:10px 18px; border-radius:8px;
+    <div id="folium-title-card" style="position:fixed; top:10px; left:60px; z-index:1000;
+         background:white; color:#1d1d1f; padding:10px 18px; border-radius:8px;
          box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:Arial;">
       <b>🐟 Cadena de Frío — Pesca Artesanal</b><br>
-      <span style="font-size:12px; color:#666;">
+      <span style="font-size:12px; color:#555;">
         Puerto Gaitán, Meta, Colombia
       </span>
     </div>
@@ -419,7 +428,7 @@ def _agregar_capa_rios(mapa: folium.Map) -> None:
     datos = None
     try:
         from .river_network import obtener_capa_rios_geojson
-        datos = obtener_capa_rios_geojson()
+        datos = obtener_capa_rios_geojson(tolerancia=0.0008)
     except Exception as exc:  # módulo ausente o error de lectura
         print(f"  [!] Capa de ríos no disponible: {exc}")
     if not datos or not datos.get("features"):
@@ -620,8 +629,8 @@ def _agregar_leyenda(mapa: folium.Map) -> None:
         ("#1565C0", "Fluvial (punteada)", "10 8"), ("#757575", "Acceso local", None),
         ("#E65100", "Terrestre", None), ("#1E88E5", "Río real", None),
     ]
-    h = ('<div style="position:fixed; bottom:30px; right:10px; z-index:1000;'
-         'background:white; padding:12px 16px; border-radius:8px;'
+    h = ('<div id="folium-legend-card" style="position:fixed; bottom:30px; right:10px; z-index:1000;'
+         'background:white; color:#1d1d1f; padding:12px 16px; border-radius:8px;'
          'box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:Arial;'
          'font-size:12px; line-height:20px;"><b>Leyenda</b><br>')
     for c, l in nodos:
@@ -658,13 +667,13 @@ def _agregar_panel_itinerarios(mapa, grafo, itinerarios) -> None:
             f"<td align='right'>{it.perdida_pct:.1f}%</td></tr>"
         )
     h = (
-        '<div style="position:fixed; top:80px; left:10px; z-index:1000;'
-        'background:white; padding:8px 12px; border-radius:8px;'
+        '<div id="folium-itin-card" style="position:fixed; top:80px; left:10px; z-index:1000;'
+        'background:white; color:#1d1d1f; padding:8px 12px; border-radius:8px;'
         'box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:Arial;'
         'font-size:11px; max-height:60vh; overflow:auto;">'
         '<details open><summary><b>📋 Itinerarios por punto de pesca</b></summary>'
-        '<table style="border-collapse:collapse;margin-top:4px;" cellpadding="3">'
-        '<tr style="background:#eee;"><th>Origen</th><th>Acopio</th>'
+        '<table style="border-collapse:collapse;margin-top:4px;color:#1d1d1f;" cellpadding="3">'
+        '<tr style="background:#eee;color:#1d1d1f;"><th>Origen</th><th>Acopio</th>'
         '<th>Centro</th><th>km</th><th>h</th><th>% pérdida</th></tr>'
         f'{filas}</table></details></div>'
     )

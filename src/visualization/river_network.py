@@ -15,8 +15,9 @@ from typing import Dict, List, Optional, Tuple
 from ..utils.data_loader import SHP_DIR
 from ..utils.geo_utils import haversine
 
-BBOX_DEFECTO: Tuple[float, float, float, float] = (-73.1, 3.9, -71.3, 4.7)
-DISTANCIA_MAX_ENLACE_KM = 5.0
+# Cubre los 25 nodos del modelo y los 49 puntos de campo (lat 3.20–4.99, lon -72.54 – -70.56)
+BBOX_DEFECTO: Tuple[float, float, float, float] = (-73.80, 3.00, -70.40, 5.20)
+DISTANCIA_MAX_ENLACE_KM = 6.0
 
 Vertice = Tuple[float, float]  # (lon, lat) redondeados a 5 decimales
 
@@ -105,6 +106,33 @@ class RedFluvial:
             radio += 1
         return mejor, mejor_d
 
+    def enlace_al_cauce(self, lat: float, lon: float
+                        ) -> Tuple[Optional[List[float]], Optional[Vertice], float]:
+        """
+        Proyecta el punto sobre el tramo de río más cercano (no solo el vértice).
+
+        Devuelve ([lon, lat] del punto proyectado, vértice ancla del grafo, km).
+        """
+        v, d = self.nodo_mas_cercano(lat, lon)
+        if v is None:
+            return None, None, float("inf")
+        mejor_p: List[float] = [v[0], v[1]]
+        mejor_d = d
+        k = math.cos(math.radians(lat))  # corrección equirectangular local
+        for w, _ in self.adyacencia.get(v, ()):
+            dx, dy = (w[0] - v[0]) * k, w[1] - v[1]
+            largo2 = dx * dx + dy * dy
+            if largo2 == 0:
+                continue
+            t = ((lon - v[0]) * k * dx + (lat - v[1]) * dy) / largo2
+            t = max(0.0, min(1.0, t))
+            q_lon = v[0] + t * (w[0] - v[0])
+            q_lat = v[1] + t * (w[1] - v[1])
+            dq = haversine((lat, lon), (q_lat, q_lon))
+            if dq < mejor_d:
+                mejor_p, mejor_d = [round(q_lon, 6), round(q_lat, 6)], dq
+        return mejor_p, v, mejor_d
+
     def _dijkstra(self, origen: Vertice, destino: Vertice) -> Optional[Tuple[List[Vertice], float]]:
         dist: Dict[Vertice, float] = {origen: 0.0}
         previo: Dict[Vertice, Vertice] = {}
@@ -136,8 +164,8 @@ class RedFluvial:
         Incluye los enlaces punto→río y río→punto. None si no hay conexión
         o si algún punto queda a más de 5 km del río.
         """
-        v1, d1 = self.nodo_mas_cercano(lat1, lon1)
-        v2, d2 = self.nodo_mas_cercano(lat2, lon2)
+        q1, v1, d1 = self.enlace_al_cauce(lat1, lon1)
+        q2, v2, d2 = self.enlace_al_cauce(lat2, lon2)
         if v1 is None or v2 is None:
             return None
         if d1 > DISTANCIA_MAX_ENLACE_KM or d2 > DISTANCIA_MAX_ENLACE_KM:
@@ -146,7 +174,12 @@ class RedFluvial:
         if res is None:
             return None
         camino, km = res
-        coords = [[lon1, lat1]] + [[v[0], v[1]] for v in camino] + [[lon2, lat2]]
+        bruto = ([[lon1, lat1], q1] + [[v[0], v[1]] for v in camino]
+                 + [q2, [lon2, lat2]])
+        coords: List[List[float]] = []
+        for p in bruto:  # eliminar puntos consecutivos repetidos
+            if not coords or coords[-1] != p:
+                coords.append(p)
         return coords, km + d1 + d2
 
 
