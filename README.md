@@ -7,6 +7,19 @@
 [![Tests](https://img.shields.io/badge/Tests-30%20passed-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Funcional-brightgreen)]()
+[![Presentación en Vivo](https://img.shields.io/badge/📊_Presentación_Interactiva-En_Línea-8052ff?style=for-the-badge&logo=safari&logoColor=white)](https://hardxxxx.github.io/ProyectoEstructura-Semillero/)
+[![Mapa Folium SIG](https://img.shields.io/badge/🗺️_Mapa_Geográfico-Folium-15846e?style=for-the-badge&logo=leaflet&logoColor=white)](https://hardxxxx.github.io/ProyectoEstructura-Semillero/data/output/mapa_interactivo.html)
+
+---
+
+## 🚀 Acceso Directo en Línea (Sin Descargar Nada)
+
+Puedes explorar tanto la **presentación interactiva por diapositivas** como el **mapa geográfico Folium** directamente desde tu navegador:
+
+| Experiencia | Enlace Principal (GitHub Pages) | Enlace Alternativo Inmediato (HTMLPreview) |
+|---|---|---|
+| 📊 **Presentación de Diapositivas (8 Vistas)**<br>*(Portada, Mapa SIG, Grafo Vial, Fluvial, Mixto, Algoritmos, Solución FLP, Impacto)* | [👉 **Abrir Diapositivas en Vivo**](https://hardxxxx.github.io/ProyectoEstructura-Semillero/) | [🔗 **Ver vía HTMLPreview**](https://htmlpreview.github.io/?https://github.com/HardXxxx/ProyectoEstructura-Semillero/blob/main/data/output/presentacion_red_logistica.html) |
+| 🗺️ **Mapa Geográfico Interactivo SIG**<br>*(Rutas reales OSRM + Red fluvial + 49 puntos de campo)* | [👉 **Abrir Mapa SIG en Vivo**](https://hardxxxx.github.io/ProyectoEstructura-Semillero/data/output/mapa_interactivo.html) | [🔗 **Ver vía HTMLPreview**](https://htmlpreview.github.io/?https://github.com/HardXxxx/ProyectoEstructura-Semillero/blob/main/data/output/mapa_interactivo.html) |
 
 ---
 
@@ -213,7 +226,8 @@ Al ejecutar `python main.py`, el programa produce:
 - **Simulación** de pérdida de pescado por ruta
 - **Tabla comparativa** de escenarios: sin frío vs con 1 centro vs múltiples centros
 - **Gráfico** `data/output/grafo_logistico.png` con la red y ruta óptima destacada
-- **Mapa interactivo** `data/output/mapa_interactivo.html` con rutas siguiendo carreteras reales (OSRM)
+- **Presentación interactiva (8 diapositivas)**: `data/output/presentacion_red_logistica.html` ([Abrir en línea](https://hardxxxx.github.io/ProyectoEstructura-Semillero/))
+- **Mapa interactivo** `data/output/mapa_interactivo.html` con rutas siguiendo carreteras y ríos reales ([Abrir en línea](https://hardxxxx.github.io/ProyectoEstructura-Semillero/data/output/mapa_interactivo.html))
 - **GeoJSON** `data/output/nodos_red.geojson` y `ruta_dijkstra.geojson` para visualización externa
 - **CSV exportados** en `data/output/`
 
