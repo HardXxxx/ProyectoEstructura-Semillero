@@ -528,7 +528,7 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     clase_slide0 = "visible" if modo_autonomo else "visible"
     return f"""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Albert+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400;1,6..72,500&display=swap');
 
   :root {{
     /* ═══════════════════════════════════════════════════════════════
@@ -536,11 +536,11 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
        ═══════════════════════════════════════════════════════════════ */
     --color-void: #000000;
     --color-obsidian: #000000;
-    --color-graphite: #0e0e0e;
-    --color-carbon: #1d1d1f;
+    --color-graphite: #0a0a0c;
+    --color-carbon: #121316;
     --color-walnut-shadow: #100904;
     --color-bark-brown: #382416;
-    --color-steel: #333336;
+    --color-steel: #24252a;
     --color-cork-border: #40372e;
     --color-slate: #6e6e73;
 
@@ -553,10 +553,10 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     --color-ash: #8e8e93;
 
     /* Acentos de marca e ingeniería (calibrados a WCAG AA >= 4.5:1) */
-    --color-electric-iris: #6836f5;
+    --color-electric-iris: #8052ff;
     --color-saffron-spark: #ffb829;
     --color-deep-verdant: #15846e;
-    --color-apple-blue: #0062c4;
+    --color-apple-blue: #0071e3;
     --color-electric-link: #2997ff;
     --color-optical-yellow: #ffd500;
     --color-ember-accent: #ff6b2b;
@@ -570,19 +570,24 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     --col-habitat: #10b981;
     --col-venta: #ec4899;
 
-    /* Familias tipográficas refinadas */
-    --font-sans: 'PPNeueMontreal', 'Albert Sans', 'SF Pro Display', 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    /* Familias tipográficas refinadas con Google Fonts garantizadas */
+    --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     --font-serif: 'Newsreader', 'Georgia', 'Times New Roman', serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, monospace;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
 
     /* Radios y geometría (Dala 24px pills / Apple 28px plinths) */
-    --radius-cards: 28px;
-    --radius-panel: 24px;
-    --radius-nav: 20px;
+    --radius-cards: 24px;
+    --radius-panel: 20px;
+    --radius-nav: 18px;
     --radius-pill: 9999px;
 
     /* Curvas Emil Kowalski (animate & review-animations) */
-    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }}
     --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
     --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   }}
@@ -634,46 +639,48 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
   /* Escala tipográfica jerárquica (pasos > 1.35× con legibilidad editorial) */
   body {{
     font-family: var(--font-sans);
-    font-size: 16px;
-    line-height: 1.55;
+    font-size: 15.5px;
+    line-height: 1.6;
     color: var(--color-porcelain);
     background-color: var(--color-void);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }}
   h1 {{
-    font-family: var(--font-sans);
-    font-size: 46px;
-    font-weight: 500;
-    line-height: 1.08;
-    letter-spacing: -0.026em;
+    font-family: var(--font-display);
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.035em;
     color: var(--color-bone-white);
     margin: 0;
   }}
   h2 {{
-    font-family: var(--font-sans);
-    font-size: 30px;
-    font-weight: 500;
-    line-height: 1.15;
-    letter-spacing: -0.02em;
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.025em;
     color: var(--color-porcelain);
     margin: 0;
   }}
   h3 {{
-    font-family: var(--font-sans);
-    font-size: 20px;
+    font-family: var(--font-display);
+    font-size: 21px;
     font-weight: 600;
     line-height: 1.25;
-    letter-spacing: -0.012em;
+    letter-spacing: -0.015em;
     color: var(--color-porcelain);
     margin: 0;
   }}
   p {{
-    font-size: 16px;
+    font-size: 15.5px;
     font-weight: 400;
-    line-height: 1.6;
+    line-height: 1.65;
     color: var(--color-silver-mist);
     margin: 0;
+    text-wrap: pretty;
   }}
 
   /* Números tabulares obligatorios en métricas, coordenadas, pesos y contadores */
@@ -957,10 +964,11 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     margin-bottom: 36px;
   }}
   .agy-hero-title {{
-    font-size: 46px;
-    font-weight: 500;
-    line-height: 1.08;
-    letter-spacing: -0.026em;
+    font-family: var(--font-display);
+    font-size: 50px;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.038em;
     color: var(--color-bone-white);
     margin: 0 0 18px 0;
   }}
@@ -968,7 +976,7 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     font-family: var(--font-serif);
     font-style: italic;
     font-weight: 400;
-    color: var(--color-warm-cream);
+    color: var(--color-saffron-spark);
   }}
   .agy-hero-lead {{
     font-size: 17px;
@@ -999,41 +1007,52 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     gap: 14px;
   }}
   .agy-pill-cta {{
-    background: var(--color-electric-iris);
+    background: linear-gradient(135deg, var(--color-electric-iris) 0%, #a855f7 100%);
     color: var(--color-bone-white);
     border: none;
-    border-radius: 24px;
-    padding: 14px 24px;
+    border-radius: var(--radius-pill);
+    padding: 14px 26px;
     font-family: var(--font-sans);
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.025em;
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out);
+    gap: 10px;
+    box-shadow: 0 4px 20px rgba(128, 82, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transition: transform 150ms var(--ease-out), box-shadow 150ms var(--ease-out), filter 150ms var(--ease-out);
+  }}
+  .agy-pill-cta:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(128, 82, 255, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    filter: brightness(1.08);
   }}
   .agy-pill-cta:active {{
-    transform: scale(0.97);
+    transform: scale(0.96) translateY(0);
+    box-shadow: 0 2px 10px rgba(128, 82, 255, 0.3);
   }}
   .agy-pill-ghost {{
-    background: transparent;
-    color: var(--color-warm-cream);
-    border: 1px solid var(--color-cork-border);
-    border-radius: 24px;
-    padding: 13px 20px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--color-porcelain);
+    border: 1px solid var(--color-steel);
+    border-radius: var(--radius-pill);
+    padding: 13px 22px;
     font-family: var(--font-sans);
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 13.5px;
+    font-weight: 600;
     letter-spacing: 0.02em;
-    text-transform: uppercase;
     cursor: pointer;
-    transition: transform 160ms var(--ease-out), border-color 160ms var(--ease-out), color 160ms var(--ease-out);
+    transition: transform 150ms var(--ease-out), border-color 150ms var(--ease-out), background-color 150ms var(--ease-out);
+  }}
+  .agy-pill-ghost:hover {{
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.25);
+    transform: translateY(-2px);
   }}
   .agy-pill-ghost:active {{
-    transform: scale(0.97);
+    transform: scale(0.96) translateY(0);
   }}
 
   /* Plinto de Constelación Interactiva Dala en la Portada */
@@ -1093,7 +1112,7 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
   }}
 
   .agy-plinth-card {{
-    background: linear-gradient(180deg, #1d1d1f 0%, #0a0a0c 100%);
+    background: radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(128, 82, 255, 0.08), transparent 70%), linear-gradient(180deg, #17181c 0%, #0a0a0c 100%);
     border: 1px solid var(--color-steel);
     border-radius: var(--radius-cards);
     padding: 24px;
@@ -1101,6 +1120,31 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     flex-direction: column;
     justify-content: space-between;
     gap: 12px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 220ms var(--ease-out), border-color 220ms var(--ease-out), box-shadow 220ms var(--ease-out);
+  }}
+  .agy-plinth-card::before {{
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: radial-gradient(350px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 184, 41, 0.45), transparent 70%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 250ms var(--ease-out);
+  }}
+  .agy-plinth-card:hover {{
+    transform: translateY(-3px);
+    border-color: rgba(255, 184, 41, 0.35);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 24px rgba(128, 82, 255, 0.12);
+  }}
+  .agy-plinth-card:hover::before {{
+    opacity: 1;
   }}
   .agy-plinth-card.obsidian {{
     background: var(--color-obsidian);
@@ -1113,11 +1157,11 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
   }}
 
   .agy-stat-num {{
-    font-family: var(--font-sans);
-    font-size: 38px;
-    font-weight: 500;
+    font-family: var(--font-display);
+    font-size: 42px;
+    font-weight: 700;
     line-height: 1.05;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.04em;
     color: var(--color-porcelain);
   }}
   .agy-stat-unit {{
@@ -2552,25 +2596,87 @@ function agyEsSlideInteractivo(s) {{
 }}
 
 // ═══════════════════════════════════════════════════════════════════════
-// MOTOR DE CONSTELACIÓN DE PARTÍCULAS TRIANGULARES (ESTÉTICA DALA)
+// MOTOR DE CONSTELACIÓN DE PARTÍCULAS TRIANGULARES (ESTÉTICA DALA CON FÍSICA REACTIVA)
 // ═══════════════════════════════════════════════════════════════════════
+let agyConstelacionAnimId = null;
+let agyHeroAnimId = null;
+
+function agyAnimarContadores(container) {{
+  if (!container) return;
+  const elements = container.querySelectorAll(".agy-stat-num");
+  elements.forEach(el => {{
+    if (!el.dataset.origHtml) {{
+      el.dataset.origHtml = el.innerHTML;
+    }}
+    const html = el.dataset.origHtml;
+    const match = html.match(/^([^0-9]*)([\\d]+(?:[.,]\\d+)?)(.*)$/s);
+    if (!match) return;
+
+    const prefix = match[1];
+    const numStr = match[2].replace(',', '.');
+    const suffix = match[3];
+    const targetVal = parseFloat(numStr);
+    if (isNaN(targetVal)) return;
+
+    const decimals = numStr.includes('.') ? numStr.split('.')[1].length : 0;
+    const duration = 720;
+    const startTime = performance.now();
+
+    function step(now) {{
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      const current = (targetVal * ease).toFixed(decimals);
+      el.innerHTML = `${{prefix}}${{current}}${{suffix}}`;
+      if (progress < 1) {{
+        requestAnimationFrame(step);
+      }} else {{
+        el.innerHTML = html;
+      }}
+    }}
+    requestAnimationFrame(step);
+  }});
+}}
+
 function agyIniciarConstelacionDala() {{
   const palette = ["#8052ff", "#ffb829", "#15846e", "#2997ff", "#ec4899"];
 
-  // 1. Lienzo de fondo del Explorador de Grafos (#agy-constellation-canvas)
+  // Iniciar Spotlight interactivo en todas las tarjetas
+  document.querySelectorAll(".agy-plinth-card, .agy-math-param-card, .agy-stat-card").forEach(card => {{
+    card.addEventListener("mousemove", (e) => {{
+      const rect = card.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      card.style.setProperty("--mouse-x", `${{x}}px`);
+      card.style.setProperty("--mouse-y", `${{y}}px`);
+    }});
+  }});
+
+  // 1. Lienzo de fondo del Explorador de Grafos (#agy-constellation-canvas) con movimiento continuo
   const bgCanvas = document.getElementById("agy-constellation-canvas");
   if (bgCanvas) {{
     const ctx = bgCanvas.getContext("2d");
-    const particles = Array.from({{ length: 78 }}, (_, i) => ({{
-      x: (Math.sin(i * 12.9898) * 43758.5453) % 1,
-      y: (Math.cos(i * 78.233) * 19341.231) % 1,
-      size: 2.5 + (i % 4) * 1.1,
-      angle: (i * 0.65) % (Math.PI * 2),
+    const particles = Array.from({{ length: 85 }}, (_, i) => ({{
+      x: Math.random(),
+      y: Math.random(),
+      vx: (Math.random() - 0.5) * 0.0003,
+      vy: (Math.random() - 0.5) * 0.0003,
+      size: 2.2 + (i % 4) * 1.1,
+      angle: Math.random() * Math.PI * 2,
+      vRot: (Math.random() - 0.5) * 0.015,
       color: palette[i % palette.length],
-      alpha: 0.16 + (i % 5) * 0.06
+      alpha: 0.18 + (i % 5) * 0.06
     }}));
 
-    function drawBgConstellation() {{
+    let mouseBg = {{ x: -1000, y: -1000 }};
+    window.addEventListener("mousemove", (e) => {{
+      if (!bgCanvas.offsetParent) return;
+      const rect = bgCanvas.getBoundingClientRect();
+      mouseBg.x = e.clientX - rect.left;
+      mouseBg.y = e.clientY - rect.top;
+    }});
+
+    function loopBgConstellation() {{
       const w = bgCanvas.clientWidth || 960;
       const h = bgCanvas.clientHeight || 640;
       if (bgCanvas.width !== w || bgCanvas.height !== h) {{
@@ -2578,15 +2684,35 @@ function agyIniciarConstelacionDala() {{
         bgCanvas.height = h;
       }}
       ctx.clearRect(0, 0, w, h);
-      particles.forEach((pt, idx) => {{
-        const px = Math.abs(pt.x) * w;
-        const py = Math.abs(pt.y) * h;
+
+      particles.forEach((pt) => {{
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.angle += pt.vRot;
+        if (pt.x < 0) pt.x = 1;
+        if (pt.x > 1) pt.x = 0;
+        if (pt.y < 0) pt.y = 1;
+        if (pt.y > 1) pt.y = 0;
+
+        let px = pt.x * w;
+        let py = pt.y * h;
+
+        // Fricción y repulsión suave con el cursor
+        const dx = px - mouseBg.x;
+        const dy = py - mouseBg.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120 && dist > 1) {{
+          const force = (120 - dist) / 120 * 1.8;
+          px += (dx / dist) * force * 15;
+          py += (dy / dist) * force * 15;
+        }}
+
         ctx.save();
         ctx.translate(px, py);
         ctx.rotate(pt.angle);
         ctx.strokeStyle = pt.color;
         ctx.globalAlpha = pt.alpha;
-        ctx.lineWidth = 1.1;
+        ctx.lineWidth = 1.15;
         ctx.beginPath();
         const r = pt.size;
         ctx.moveTo(0, -r);
@@ -2596,12 +2722,16 @@ function agyIniciarConstelacionDala() {{
         ctx.stroke();
         ctx.restore();
       }});
+
+      if (!agyPrefersReducedMotion()) {{
+        agyConstelacionAnimId = requestAnimationFrame(loopBgConstellation);
+      }}
     }}
-    drawBgConstellation();
-    window.addEventListener("resize", drawBgConstellation);
+    if (agyConstelacionAnimId) cancelAnimationFrame(agyConstelacionAnimId);
+    loopBgConstellation();
   }}
 
-  // 2. Constelación Neural/Topológica en la Portada (#agy-hero-constellation)
+  // 2. Constelación Neural/Topológica en la Portada (#agy-hero-constellation) viva a 60 FPS
   const heroCanvas = document.getElementById("agy-hero-constellation");
   if (heroCanvas) {{
     const hCtx = heroCanvas.getContext("2d");
@@ -2613,33 +2743,41 @@ function agyIniciarConstelacionDala() {{
         tipo: n.tipo,
         bx: 0.5 + Math.cos(ang) * rad * 1.15,
         by: 0.46 + Math.sin(ang) * rad * 0.85,
+        vx: 0,
+        vy: 0,
         color: AGY_COLORES_NODO[n.tipo] || "#8052ff",
         phase: i * 0.42
       }};
     }});
-    const dust = Array.from({{ length: 120 }}, (_, i) => {{
+    const dust = Array.from({{ length: 130 }}, (_, i) => {{
       const a = (i * 2.39996);
-      const r = Math.sqrt(i / 120) * 0.42;
+      const r = Math.sqrt(i / 130) * 0.44;
       return {{
         x: 0.5 + Math.cos(a) * r * 1.2,
         y: 0.46 + Math.sin(a) * r * 0.88,
-        sz: 2.0 + (i % 3) * 1.1,
+        sz: 2.0 + (i % 3) * 1.2,
         rot: i * 0.5,
+        vRot: 0.008 + (i % 3) * 0.005,
         col: palette[i % palette.length],
         alpha: 0.28 + (i % 4) * 0.14
       }};
     }});
 
     let mouseOff = {{ x: 0, y: 0 }};
+    let targetMouse = {{ x: 0, y: 0 }};
     heroCanvas.addEventListener("mousemove", (ev) => {{
       const r = heroCanvas.getBoundingClientRect();
-      mouseOff.x = ((ev.clientX - r.left) / (r.width || 1) - 0.5) * 18;
-      mouseOff.y = ((ev.clientY - r.top) / (r.height || 1) - 0.5) * 18;
-      renderHeroFrame(performance.now() * 0.001);
+      targetMouse.x = ((ev.clientX - r.left) / (r.width || 1) - 0.5) * 32;
+      targetMouse.y = ((ev.clientY - r.top) / (r.height || 1) - 0.5) * 32;
+    }});
+    heroCanvas.addEventListener("mouseleave", () => {{
+      targetMouse.x = 0;
+      targetMouse.y = 0;
     }});
     heroCanvas.addEventListener("click", () => agyCambiarSlide(4, false));
 
-    function renderHeroFrame(t) {{
+    function loopHeroConstellation() {{
+      const t = performance.now() * 0.001;
       const w = heroCanvas.clientWidth || 480;
       const h = heroCanvas.clientHeight || 390;
       if (heroCanvas.width !== w || heroCanvas.height !== h) {{
@@ -2648,25 +2786,35 @@ function agyIniciarConstelacionDala() {{
       }}
       hCtx.clearRect(0, 0, w, h);
 
-      // Conexiones tenues de la constelación
-      hCtx.strokeStyle = "rgba(128, 82, 255, 0.18)";
-      hCtx.lineWidth = 0.9;
+      // Interpolación suave del mouse (spring easing)
+      mouseOff.x += (targetMouse.x - mouseOff.x) * 0.08;
+      mouseOff.y += (targetMouse.y - mouseOff.y) * 0.08;
+
+      // Conexiones tenues palpitantes
+      const pulseAlpha = 0.15 + Math.sin(t * 1.5) * 0.06;
+      hCtx.strokeStyle = `rgba(128, 82, 255, ${{pulseAlpha}})`;
+      hCtx.lineWidth = 0.95;
       for (let i = 0; i < triNodes.length; i++) {{
         const a = triNodes[i];
         const b = triNodes[(i + 3) % triNodes.length];
+        const ax = a.bx * w + mouseOff.x * 0.6 + Math.sin(t + a.phase) * 3;
+        const ay = a.by * h + mouseOff.y * 0.6 + Math.cos(t + a.phase) * 3;
+        const bx = b.bx * w + mouseOff.x * 0.6 + Math.sin(t + b.phase) * 3;
+        const by = b.by * h + mouseOff.y * 0.6 + Math.cos(t + b.phase) * 3;
         hCtx.beginPath();
-        hCtx.moveTo(a.bx * w + mouseOff.x * 0.6, a.by * h + mouseOff.y * 0.6);
-        hCtx.lineTo(b.bx * w + mouseOff.x * 0.6, b.by * h + mouseOff.y * 0.6);
+        hCtx.moveTo(ax, ay);
+        hCtx.lineTo(bx, by);
         hCtx.stroke();
       }}
 
-      // Nube de triángulos Dala
+      // Nube de triángulos Dala giratorios
       dust.forEach((d, idx) => {{
-        const px = d.x * w + mouseOff.x * ((idx % 3) * 0.35);
-        const py = d.y * h + mouseOff.y * ((idx % 3) * 0.35);
+        d.rot += d.vRot;
+        const px = d.x * w + mouseOff.x * ((idx % 3) * 0.4) + Math.cos(t * 0.8 + idx) * 2;
+        const py = d.y * h + mouseOff.y * ((idx % 3) * 0.4) + Math.sin(t * 0.8 + idx) * 2;
         hCtx.save();
         hCtx.translate(px, py);
-        hCtx.rotate(d.rot + t * 0.15);
+        hCtx.rotate(d.rot);
         hCtx.strokeStyle = d.col;
         hCtx.globalAlpha = d.alpha;
         hCtx.lineWidth = 1.15;
@@ -2680,27 +2828,42 @@ function agyIniciarConstelacionDala() {{
         hCtx.restore();
       }});
 
-      // Vértices principales con etiqueta
+      // Vértices principales con halo luminoso
       triNodes.forEach((nd) => {{
-        const px = nd.bx * w + mouseOff.x;
-        const py = nd.by * h + mouseOff.y;
+        const px = nd.bx * w + mouseOff.x + Math.sin(t * 1.2 + nd.phase) * 4;
+        const py = nd.by * h + mouseOff.y + Math.cos(t * 1.2 + nd.phase) * 4;
         hCtx.save();
         hCtx.translate(px, py);
-        hCtx.fillStyle = "#000000";
-        hCtx.strokeStyle = nd.color;
-        hCtx.lineWidth = 1.8;
+        
+        // Halo de resplandor
+        hCtx.beginPath();
+        hCtx.arc(0, 0, 11, 0, Math.PI * 2);
+        hCtx.fillStyle = nd.color;
+        hCtx.globalAlpha = 0.18 + Math.sin(t * 2 + nd.phase) * 0.1;
+        hCtx.fill();
+
+        // Núcleo
+        hCtx.globalAlpha = 1;
         hCtx.beginPath();
         hCtx.arc(0, 0, 5.5, 0, Math.PI * 2);
+        hCtx.fillStyle = "#000000";
+        hCtx.strokeStyle = nd.color;
+        hCtx.lineWidth = 2.2;
         hCtx.fill();
         hCtx.stroke();
+
         hCtx.fillStyle = "#f5f5f7";
-        hCtx.font = "600 9px monospace";
-        hCtx.fillText(nd.id, 8, 3);
+        hCtx.font = "600 10px 'JetBrains Mono', monospace";
+        hCtx.fillText(nd.id, 9, 3.5);
         hCtx.restore();
       }});
+
+      if (!agyPrefersReducedMotion()) {{
+        agyHeroAnimId = requestAnimationFrame(loopHeroConstellation);
+      }}
     }}
-    renderHeroFrame(0);
-    window.addEventListener("resize", () => renderHeroFrame(0));
+    if (agyHeroAnimId) cancelAnimationFrame(agyHeroAnimId);
+    loopHeroConstellation();
   }}
 }}
 
@@ -3416,7 +3579,10 @@ function agyCambiarSlide(nuevoSlide, viaKeyboard) {{
     intStage.classList.remove("active");
     document.querySelectorAll(".agy-ed-slide").forEach(art => art.classList.remove("active"));
     const targetArt = document.getElementById(`agy-ed-slide-${{agySlideActual}}`);
-    if (targetArt) targetArt.classList.add("active");
+    if (targetArt) {{
+      targetArt.classList.add("active");
+      agyAnimarContadores(targetArt);
+    }}
     edStage.scrollTop = 0;
     return;
   }}
