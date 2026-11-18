@@ -42,6 +42,7 @@ from src.optimization.facility_location import resolver_localizacion
 from src.optimization.cold_chain import SimuladorCadenaFrio
 from src.optimization.scenario_evaluator import EvaluadorEscenarios
 from src.optimization.itinerarios import calcular_itinerarios, Itinerario
+from src.optimization.eca_solutions import ejecutar_suite_eca, formatear_reporte_eca
 from src.utils.data_loader import cargar_nodos_csv, cargar_aristas_csv, guardar_resultados_csv
 from src.utils.constants import TipoNodo, TIEMPO_MAX_SIN_FRIO_H
 from src.visualization.felt_exporter import exportar_para_felt
@@ -480,8 +481,15 @@ def ejecutar_comparacion(grafo: GrafoLogistico):
     return resultados
 
 
+def ejecutar_soluciones_eca(grafo: GrafoLogistico):
+    """Ejecuta y muestra las 6 soluciones algorítmicas de la ECA (C05-01-2026-003)."""
+    datos_eca = ejecutar_suite_eca(grafo)
+    print(formatear_reporte_eca(datos_eca))
+    return datos_eca
+
+
 # ═══════════════════════════════════════════════════════════════
-#  PASO 6: VISUALIZACIÓN
+#  PASO 7: VISUALIZACIÓN
 # ═══════════════════════════════════════════════════════════════
 
 def ejecutar_visualizacion(grafo: GrafoLogistico):
@@ -553,6 +561,9 @@ def main():
 
     # 6. Comparación de escenarios
     ejecutar_comparacion(grafo)
+
+    # 6C. Soluciones algorítmicas ECA (C05-01-2026-003)
+    ejecutar_soluciones_eca(grafo)
 
     # 7. Visualización
     ejecutar_visualizacion(grafo)

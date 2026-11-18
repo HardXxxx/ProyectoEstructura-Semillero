@@ -27,15 +27,22 @@ Puedes explorar tanto la **presentación interactiva por diapositivas** como el 
 
 Proyecto de **Estructuras de Datos** que modela la cadena de suministro pesquera de Puerto Gaitán, Meta, como un **problema de optimización sobre grafos**. El objetivo es determinar las **ubicaciones estratégicas** de centros de refrigeración que minimicen el deterioro del pescado durante el transporte desde los sitios de captura hasta los mercados finales (Villavicencio y Bogotá).
 
-### Problema Real
+### Problema Real y Contexto Territorial (ECA `C05-01-2026-003`)
 
-Los pescadores artesanales de Puerto Gaitán pierden hasta un **40%** del producto por falta de cadena de frío adecuada. El pescado se deteriora rápidamente desde la captura hasta los centros de comercialización, generando pérdidas económicas significativas.
+Los pescadores artesanales de Puerto Gaitán extraen **265.75 kg/día** en las cuencas de los ríos **Meta, Manacacías e Iteviare**, perdiendo hasta un **40%** del producto por exposición a $30\ ^\circ\text{C}$ ($2.5\%/\text{h}$ de deterioro base, $3.75\%/\text{h}$ en zonas críticas `D`) y riesgo de generación de **histamina** si superan el **límite sanitario FAO de $4.0\text{ horas}$ ($240\text{ min}$)** sin refrigeración. Además, enfrentan la **veda biológica (abril–junio)** —que exige conmutar hacia piscicultura sostenible de especies nativas—, restricciones ambientales en humedales/resguardos indígenas y necesidad de trazabilidad sanitaria (BPP/BPM, ICA/INVIMA).
 
-### Solución Propuesta
+### Solución Algorítmica y Matemática en $G=(V,E)$
 
-Combinar dos problemas clásicos de optimización:
-1. **Facility Location Problem (FLP):** ¿Dónde ubicar los centros de refrigeración?
-2. **Shortest Path / Vehicle Routing:** ¿Qué ruta debe seguir cada lote de pescado?
+El proyecto resuelve estas problemáticas mediante un **sistema de doble grafo multimodal implementado desde cero** (ver desarrollo completo en [`INFORME_TECNICO.md`](./INFORME_TECNICO.md) y [`docs/modelo_matematico.md`](./docs/modelo_matematico.md)):
+
+| # | Problemática Real del Sector (ECA Puerto Gaitán) | Solución Matemática y de Estructuras de Datos en $G=(V,E)$ |
+| :-: | :--- | :--- |
+| **1** | **Época de Veda (Abril–Junio) vs. Pesca Extractiva** | **Grafos Bitemporales ($G_{\text{pesca}}$ y $G_{\text{veda}}$):** Conmutación de orígenes entre puntos de captura fluvial (`P01`–`P07`) y estanques de piscicultura nativa ($P_{\text{pisc}}$), reevaluando centralidad de muelles ($M$) y acopios terrestres ($A$). |
+| **2** | **Riesgo de Histamina y Límite FAO ($t \le 4.0\text{ h}$)** | **Constrained Shortest Path (Dijkstra + `SimuladorCadenaFrio`):** Poda y validación de rutas donde $\sum t_e + \sum t_{\text{espera}}(M) \le 240\text{ min}$ antes de tocar un centro de frío ($F$). |
+| **3** | **Abastecimiento de Hielo en Proporción $1:1$** | **Balance de Masa y Costo en Aristas:** Incorporación de relación $1\text{ kg hielo}:1\text{ kg pescado}$ (`$800 COP/kg`), duplicando masa movilizada ($Q_{\text{pescado}} + Q_{\text{hielo}}$) y validando `capacidad_kg`. |
+| **4** | **Ubicación de Centros de Frío / Hielo en Muelles** | **Facility Location Problem (FLP Costo Total):** Minimiza $\sum f_j y_j + \sum c_{ij} d_{ij} x_{ij}$, demostrando que abrir **solo `F02` (Puerto Gaitán)** logra $100\%$ de cobertura ($t \le 2.20\text{ h}$) y ahorra **$\$10,000,000\text{ COP/mes}$**. |
+| **5** | **Humedales Protegidos y Resguardos Indígenas** | **Vértices `H` (`restriccion_ambiental`) y `D` (`deterioro`):** Filtro `evitar_restringidos=True` en Dijkstra, Bellman-Ford y Floyd-Warshall para excluir hábitats/reservas `H01`–`H02` y penalizar zonas `D01`–`D02` ($\times 1.5$). |
+| **6** | **Trazabilidad y Registros Productivos (ICA/INVIMA)** | **DAG de Eventos + Tablas Hash $O(1)$:** Registro auditable por lote ($P \to M \to A \to F \to V$) indexado en memoria con historial térmico ($\Delta T \times \Delta t$) y merma acumulada. |
 
 ---
 

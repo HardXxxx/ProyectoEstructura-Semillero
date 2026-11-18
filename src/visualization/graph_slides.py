@@ -33,6 +33,7 @@ from ..algorithms.floyd_warshall import floyd_warshall, reconstruir_camino
 from ..optimization.facility_location import resolver_localizacion
 from ..optimization.scenario_evaluator import EvaluadorEscenarios
 from ..optimization.itinerarios import calcular_itinerarios
+from ..optimization.eca_solutions import ejecutar_suite_eca
 from ..utils.constants import (
     ALPHA, BETA, GAMMA, DELTA, EPSILON, ZETA,
     TIEMPO_MAX_SIN_FRIO_H, TIEMPO_TRANSBORDO_MUELLE_H, FACTOR_DETERIORO_ZONA_D,
@@ -43,7 +44,20 @@ GEOJSON_DIR = DATA_DIR / "geojson"
 
 
 def _cargar_puntos_campo_reales() -> List[Dict[str, Any]]:
-    """Carga los 49 puntos de campo reales desde data/geojson/puntos_campo.geojson."""
+    """
+    Carga los 49 puntos de campo reales desde `data/geojson/puntos_campo.geojson`
+    enriquecidos con su corredor fluvial real sobre `rios.shp`, condiciones de
+    cuesta del río (aguas abajo vs. cuesta arriba), velocidades en lancha y frío.
+    """
+    try:
+        from .river_network import calcular_corredor_fluvial_puntos_campo
+        corredor = calcular_corredor_fluvial_puntos_campo()
+        pts = corredor.get("puntos", [])
+        if pts:
+            return list(pts)
+    except Exception:
+        pass
+
     ruta = GEOJSON_DIR / "puntos_campo.geojson"
     if not ruta.exists():
         return []
@@ -485,6 +499,7 @@ def construir_datos_slides(
         pass
 
     puntos_campo = _cargar_puntos_campo_reales()
+    eca_data = ejecutar_suite_eca(grafo)
 
     return {
         "nodos": nodos_data,
@@ -500,6 +515,7 @@ def construir_datos_slides(
         "flp": flp_data,
         "escenarios_pg": escenarios_pg,
         "escenarios_bog": escenarios_bog,
+        "eca": eca_data,
         "rios_lineas": rios_lineas,
         "stats_rio": stats_rio,
         "puntos_campo": puntos_campo,
@@ -587,9 +603,6 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
     --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  }}
-    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   }}
 
   *, *::before, *::after {{
@@ -1988,6 +2001,195 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
       border-top: 1px solid var(--color-steel);
     }}
   }}
+
+  /* ═══════════════════════════════════════════════════════════════
+     COMPONENTES AVANZADOS: MODAL CARDS (MORPH), SIMULADOR CROSSHAIR,
+     PESTAÑAS DE CONSTRUCCIÓN DE GRAFOS Y COMPARADOR ANTES VS DESPUÉS
+     ═══════════════════════════════════════════════════════════════ */
+  .agy-modal-trigger {{
+    margin-top: 8px;
+    align-self: flex-start;
+    background: rgba(128, 82, 255, 0.12);
+    color: var(--color-bone-white);
+    border: 1px solid rgba(128, 82, 255, 0.4);
+    border-radius: 9999px;
+    padding: 6px 13px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out), border-color 160ms var(--ease-out);
+  }}
+  .agy-modal-trigger:hover {{
+    background: var(--color-electric-iris);
+    border-color: var(--color-bone-white);
+    transform: translateY(-1px);
+  }}
+  .agy-modal-trigger:active {{
+    transform: scale(0.96);
+  }}
+
+  #agy-modal-backdrop {{
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(14px);
+    display: none;
+    place-items: center;
+    padding: 24px;
+    opacity: 0;
+    transition: opacity 220ms var(--ease-out);
+  }}
+  #agy-modal-backdrop.open {{
+    display: grid;
+    opacity: 1;
+  }}
+  .agy-modal-dialog {{
+    width: min(920px, 96vw);
+    max-height: 86vh;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #14151a 0%, #08080a 100%);
+    border: 1px solid rgba(128, 82, 255, 0.55);
+    border-radius: 24px;
+    padding: 30px 32px;
+    color: var(--color-porcelain);
+    transform: scale(0.92) translateY(14px);
+    transition: transform 260ms var(--ease-out);
+    position: relative;
+  }}
+  #agy-modal-backdrop.open .agy-modal-dialog {{
+    transform: scale(1) translateY(0);
+  }}
+  .agy-modal-close {{
+    position: sticky;
+    top: 0;
+    float: right;
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    border: 1px solid var(--color-steel);
+    background: rgba(20, 21, 26, 0.9);
+    color: var(--color-bone-white);
+    font-size: 18px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: transform 150ms var(--ease-out), background-color 150ms var(--ease-out);
+  }}
+  .agy-modal-close:hover {{
+    background: var(--color-electric-iris);
+    transform: rotate(90deg);
+  }}
+
+  /* Simulador de Área Térmica con Time Crosshair Arrastrable (Hero 57 Style) */
+  .agy-crosshair-panel {{
+    background: linear-gradient(180deg, #121318 0%, #070709 100%);
+    border: 1px solid var(--color-steel);
+    border-radius: 24px;
+    padding: 24px 28px;
+    margin-bottom: 28px;
+  }}
+  .agy-crosshair-controls {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 16px 0;
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--color-steel);
+    border-radius: 16px;
+  }}
+  .agy-time-slider {{
+    flex: 1;
+    min-width: 220px;
+    accent-color: var(--color-electric-iris);
+    cursor: grab;
+    height: 6px;
+  }}
+  .agy-step-tabs {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 18px;
+  }}
+  .agy-step-tab {{
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--color-silver-mist);
+    border: 1px solid var(--color-steel);
+    border-radius: 9999px;
+    padding: 9px 16px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 160ms var(--ease-out);
+  }}
+  .agy-step-tab.active {{
+    background: var(--color-electric-iris);
+    color: var(--color-bone-white);
+    border-color: rgba(255, 255, 255, 0.25);
+  }}
+  .agy-step-pane {{
+    display: none;
+    animation: agySlideEnter 220ms var(--ease-out) both;
+  }}
+  .agy-step-pane.active {{
+    display: block;
+  }}
+
+  /* Comparador Interactivo Antes vs. Después */
+  .agy-comp-card {{
+    background: linear-gradient(180deg, #15161b 0%, #09090c 100%);
+    border: 1px solid var(--color-steel);
+    border-radius: 20px;
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }}
+  .agy-comp-dual-bar {{
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }}
+  .agy-comp-track {{
+    height: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 9999px;
+    overflow: hidden;
+  }}
+  .agy-comp-fill-before {{
+    height: 100%;
+    background: linear-gradient(90deg, #dc5000, #ff6b2b);
+    border-radius: 9999px;
+    transition: width 550ms var(--ease-out);
+  }}
+  .agy-comp-fill-after {{
+    height: 100%;
+    background: linear-gradient(90deg, #15846e, #10b981);
+    border-radius: 9999px;
+    transition: width 550ms var(--ease-out);
+  }}
+  .agy-delta-pill {{
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    background: rgba(16, 185, 129, 0.14);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+  }}
 </style>
 
 <!-- Etiqueta Serial Vertical estilo ORYZO AI -->
@@ -2012,7 +2214,7 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
 
   <div class="agy-slide-tabs" role="tablist" aria-label="Diapositivas">
     <button class="agy-slide-tab active is-editorial" role="tab" aria-selected="true" data-slide="0" onclick="agyCambiarSlide(0, false)">
-      <span class="agy-tab-dot"></span>1. Portada
+      <span class="agy-tab-dot"></span>1. Problemáticas (Base)
     </button>
     <button class="agy-slide-tab" role="tab" aria-selected="false" data-slide="1" onclick="agyCambiarSlide(1, false)">
       <span class="agy-tab-dot"></span>2. Mapa SIG
@@ -2027,13 +2229,13 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
       <span class="agy-tab-dot"></span>5. Grafo Mixto
     </button>
     <button class="agy-slide-tab is-editorial" role="tab" aria-selected="false" data-slide="5" onclick="agyCambiarSlide(5, false)">
-      <span class="agy-tab-dot"></span>6. Algoritmos
+      <span class="agy-tab-dot"></span>6. Programa y Teorías
     </button>
     <button class="agy-slide-tab is-editorial" role="tab" aria-selected="false" data-slide="6" onclick="agyCambiarSlide(6, false)">
       <span class="agy-tab-dot"></span>7. Solución FLP
     </button>
     <button class="agy-slide-tab is-editorial" role="tab" aria-selected="false" data-slide="7" onclick="agyCambiarSlide(7, false)">
-      <span class="agy-tab-dot"></span>8. Impacto
+      <span class="agy-tab-dot"></span>8. Comparación y Conclusión
     </button>
   </div>
 
@@ -2060,15 +2262,16 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
        ───────────────────────────────────────────────────────────────────── -->
   <section id="agy-editorial-stage" class="active" aria-label="Presentación Ejecutiva del Proyecto">
 
-    <!-- DIAPOSITIVA 1: PORTADA, CONTEXTO TERRITORIAL, PROBLEMA Y CINÉTICA TÉRMICA -->
+    <!-- DIAPOSITIVA 1: PROBLEMÁTICA GENERAL, TODOS LOS PROBLEMAS CON DATOS REALES (LÍNEA BASE SIN SOLUCIÓN) Y SIMULADOR TÉRMICO -->
     <article id="agy-ed-slide-0" class="agy-ed-slide active">
       <div class="agy-hero-grid">
         <div>
+          <span class="agy-badge" style="color:var(--color-saffron-spark);border-color:rgba(255,184,41,0.45);margin-bottom:12px;">FASE 1 · DIAGNÓSTICO Y LÍNEA BASE SIN SOLUCIÓN (ECA C05-01-2026-003)</span>
           <h1 class="agy-hero-title">
-            Optimización Multimodal de <em>Cadenas de Frío</em> para Pesca Artesanal mediante Teoría de Grafos y FLP.
+            Problemática Integral de la <em>Cadena de Frío</em> en la Pesca Artesanal de Puerto Gaitán, Meta.
           </h1>
           <p class="agy-hero-lead">
-            Modelado matemático sobre grafo dirigido ponderado G=(V,E) para erradicar la pérdida poscaptura de cachama (Colossoma macropomum) en las cuencas de los ríos Meta, Manacacías e Iteviare — Corredor Puerto Gaitán, Meta hacia Villavicencio y Bogotá.
+            En las cuencas de los ríos <strong>Meta, Manacacías e Iteviare</strong>, 7 asociaciones pesqueras extraen <strong>265.75 kg/día</strong> de pescado fresco a <strong>30 °C</strong> sin red frigorífica articulada, enfrentando hasta un <strong>40.0% de merma poscaptura</strong>, riesgo tóxico de <strong>histamina (&gt; 4.0 h FAO)</strong>, déficit total de hielo 1:1 y parálisis extractiva del 100% durante los 3 meses de veda (abril–junio).
           </p>
           <div class="agy-meta-authors">
             <div><strong>UNIVERSIDAD DE LOS LLANOS</strong> <span>· Fac. Ciencias Básicas e Ingeniería · Ing. en Sistemas</span></div>
@@ -2076,12 +2279,12 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
             <div><strong>Curso:</strong> Estructuras de Datos (603301) · Corte 3: Grafos · Semestre 2026-II · Villavicencio, Meta</div>
           </div>
           <div class="agy-cta-row">
-            <button class="agy-pill-cta" onclick="agyCambiarSlide(4, false)">
-              Explorar Constelación Multimodal G=(V,E)
+            <button class="agy-pill-cta" onclick="agyCambiarSlide(5, false)">
+              2.º Ver Qué Hace el Programa y Algoritmos
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </button>
-            <button class="agy-pill-ghost" onclick="agyCambiarSlide(1, false)">Ver Mapa Geográfico SIG</button>
-            <button class="agy-pill-ghost" onclick="agyCambiarSlide(6, false)">Ver Solución Óptima FLP</button>
+            <button class="agy-pill-ghost" onclick="agyCambiarSlide(4, false)">Explorar Grafo Mixto G=(V,E)</button>
+            <button class="agy-pill-ghost" onclick="agyCambiarSlide(7, false)">Ir a Comparación Antes vs. Después</button>
           </div>
         </div>
 
@@ -2090,95 +2293,301 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
           <canvas id="agy-hero-constellation" aria-label="Visualización de constelación de nodos logísticos"></canvas>
           <div class="agy-plinth-caption">
             <div>
-              <div style="font-size:13px;font-weight:600;color:var(--color-warm-cream);">Constelación Topológica · Cuenca del Río Meta</div>
-              <div style="font-family:var(--font-mono);font-size:12px;color:var(--color-ash-gray);">25 Vértices · 41 Aristas · 12,413 Vértices Fluviales IGAC</div>
+              <div style="font-size:13px;font-weight:600;color:var(--color-warm-cream);">Red Territorial Auditada · Cuenca del Río Meta</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--color-ash-gray);">25 Vértices · 41 Aristas · 12,413 Vértices Fluviales IGAC · 49 Puntos de Campo</div>
             </div>
             <span class="agy-badge" style="color:var(--color-saffron-spark);border-color:rgba(255,184,41,0.4);">INTERACTIVO</span>
           </div>
         </div>
       </div>
 
-      <!-- El Problema Cuantificado (4 Plintos Apple Carbon 28px) -->
+      <!-- 4 Indicadores Maestros del Problema Base (Sin Solución) -->
       <div class="agy-bento-grid-4">
         <div class="agy-plinth-card highlight-saffron">
           <div class="agy-stat-num">265.8<span class="agy-stat-unit">kg/día</span></div>
-          <div class="agy-stat-title">Producción Censada en 7 Asociaciones</div>
-          <div class="agy-stat-desc">ASOPESGA, Atarraya Verde, Asovida, Asopespor, Puerto Trujillo, Desembarcadero y Soplaviento.</div>
+          <div class="agy-stat-title">Producción Diaria Expuesta (7 Asociaciones)</div>
+          <div class="agy-stat-desc">ASOPESGA (45 kg), Atarraya Verde (38 kg), Asovida (52 kg), Asopespor (31 kg), Pto. Trujillo (28.75 kg), Desembarcadero (42 kg) y Soplaviento (29 kg).</div>
         </div>
         <div class="agy-plinth-card">
           <div class="agy-stat-num" style="color:var(--color-ember-accent);">40.0<span class="agy-stat-unit">%</span></div>
           <div class="agy-stat-title">Pérdida Poscaptura Sin Cadena de Frío</div>
-          <div class="agy-stat-desc">Exposición a 30 °C de temperatura ambiente y radiación solar directa sobre canoas sin hielo.</div>
+          <div class="agy-stat-desc">A 30 °C la cachama pierde 2.5%/h (y 3.75%/h en zonas D). Hacia Bogotá sin frío se pierde el 36.1% de la carga ($1,151,000 COP/día en merma).</div>
         </div>
         <div class="agy-plinth-card highlight-iris">
           <div class="agy-stat-num">4.0<span class="agy-stat-unit">h (240 min)</span></div>
-          <div class="agy-stat-title">Límite Estricto de Inocuidad FAO</div>
-          <div class="agy-stat-desc">Umbral sanitario máximo admisible antes de que el pescado fresco pierda aptitud comercial.</div>
+          <div class="agy-stat-title">Límite Sanitario FAO (Riesgo Histamina)</div>
+          <div class="agy-stat-desc">Sin centros de frío, el viaje a mercado toma hasta 9.48 h (569 min = 237% sobre el límite FAO), disparando bacterias e histamina tóxica.</div>
         </div>
         <div class="agy-plinth-card">
           <div class="agy-stat-num">63.0<span class="agy-stat-unit">km</span></div>
-          <div class="agy-stat-title">Aislamiento Fluvial Crítico (P05)</div>
-          <div class="agy-stat-desc">Comunidades como Puerto Trujillo en el río Iteviare operan sin energía eléctrica continua ni muelles fríos.</div>
+          <div class="agy-stat-title">Aislamiento Fluvial Crítico (P05 Iteviare)</div>
+          <div class="agy-stat-desc">Puerto Trujillo navega 63 km (2.70 h) cruzando la zona de deterioro D01 y el muelle M02 (+15 min de espera al sol) sin energía eléctrica.</div>
         </div>
       </div>
 
-      <!-- Fundamento Biológico: Cinética Térmica de la Cachama (Banner Original Solicitado) -->
-      <div class="agy-formula-banner">
-        <div>
-          <span class="agy-formula-title">MODELO MATEMÁTICO TÉRMICO (Cachama · Colossoma macropomum):</span>
-          <span class="agy-formula-eq">D_acum = D_0 + &Sigma; (k_i &middot; t_i)</span>
-        </div>
-        <div class="agy-formula-sub">
-          k_base = 2.5%/h (30 °C) &middot; Zona D = &times;1.5 (3.75%/h) &middot; Muelle M = +0.25 h al sol &middot; Centro Frío F = 0 °C (reinicia t = 0.0 h, vida útil 360 h)
-        </div>
-      </div>
-
-      <!-- Fundamento Biológico: Cinética Térmica de la Cachama (Módulo Matemático Refinado) -->
-      <div class="agy-math-showcase">
+      <!-- Catálogo Exhaustivo de las 6 Problemáticas Reales (Línea Base para Comparar Después + Modal Cards) -->
+      <div class="agy-math-showcase" style="margin-bottom:28px;">
         <div class="agy-math-top">
           <div class="agy-math-heading">
-            <h2>Cinética de Degradación Térmica · Cachama de Río (<em style="font-family:var(--font-serif);font-style:italic;font-weight:400;">Colossoma macropomum</em>)</h2>
-            <p>Función acumulativa de pérdida poscaptura por tramos antes del ingreso a la cadena de frío.</p>
+            <h2>Las 6 Problemáticas Estructurales del Proyecto (Línea Base «Antes / Sin Solución»)</h2>
+            <p>Haz clic en <strong>+ Ver Evidencia y Datos</strong> en cualquier tarjeta para abrir su ficha cuantitativa completa. Estos valores son la referencia exacta para el comparador final.</p>
+          </div>
+          <span class="agy-badge" style="color:var(--color-ember-accent);border-color:rgba(255,107,43,0.45);">DIAGNÓSTICO CUANTITATIVO REAL</span>
+        </div>
+        <div class="agy-bento-grid-3" style="margin-bottom:0;">
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-ember-accent);margin-bottom:8px;">PROBLEMA 1 · CINÉTICA TÉRMICA</span>
+              <div class="agy-stat-title">Degradación Enzimática a 30 °C (2.5%/h a 3.75%/h)</div>
+              <p style="font-size:13.5px;margin-top:6px;">Sin hielo, la vida útil total del pescado cae de <strong>360 h (15 días a 0 °C)</strong> a solo <strong>6.0 h (a 30 °C)</strong>. En envío local se pierden 6.3 kg/día (2.4%) y hacia Bogotá 45.4 a 95.9 kg/día (17.1%–36.1%).</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('prob1')">+ Ver Evidencia y Datos</button>
+          </div>
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-ember-accent);margin-bottom:8px;">PROBLEMA 2 · INOCUIDAD Y SALUD</span>
+              <div class="agy-stat-title">Generación de Histamina (&gt; 240 min sin frío)</div>
+              <p style="font-size:13.5px;margin-top:6px;">Superar las <strong>4.0 h (240 min)</strong> sin abatimiento térmico produce descarboxilación bacteriana de histidina a <strong>histamina</strong> (toxina termoestable). Sin planta en Pto. Gaitán, el cumplimiento a Bogotá es <strong>0.0%</strong>.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('prob2')">+ Ver Evidencia y Datos</button>
+          </div>
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-saffron-spark);margin-bottom:8px;">PROBLEMA 3 · INFRAESTRUCTURA Y HIELO</span>
+              <div class="agy-stat-title">Déficit Hielo 1:1 (265.8 kg/día) y Espera en Muelles</div>
+              <p style="font-size:13.5px;margin-top:6px;">La norma FAO exige proporción <strong>1:1 hielo:pescado</strong> (265.75 kg hielo/día = $6.38M COP/mes) y erradicar cajas de madera. Los muelles M01 y M02 no tienen red eléctrica y agregan <strong>+0.25 h (+15 min)</strong> al sol.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('prob3')">+ Ver Evidencia y Datos</button>
+          </div>
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-electric-iris);margin-bottom:8px;">PROBLEMA 4 · COSTO DE INVERSIÓN FLP</span>
+              <div class="agy-stat-title">Sobrecosto por Ubicación Empírica ($23.02M/mes)</div>
+              <p style="font-size:13.5px;margin-top:6px;">Cada centro de frío cuesta <strong>$5,000,000 COP/mes</strong> de costo fijo. Abrir los 3 candidatos (F01+F02+F03) eleva el gasto a <strong>$23,023,272 COP/mes ($104,444/kg)</strong> usando apenas el 5.3% de su capacidad.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('prob4')">+ Ver Evidencia y Datos</button>
+          </div>
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-electric-link);margin-bottom:8px;">PROBLEMA 5 · ÉPOCA DE VEDA (ECA)</span>
+              <div class="agy-stat-title">Parálisis Extractiva en Veda (Abril–Junio, 100%)</div>
+              <p style="font-size:13.5px;margin-top:6px;">Durante 3 meses al año (25% del calendario), la veda AUNAP prohíbe el <strong>100% de la captura fluvial</strong> en los 7 puntos de río, dejando sin ingresos al pescador si no se conmuta a piscicultura nativa.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('prob5')">+ Ver Evidencia y Datos</button>
+          </div>
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:#10b981;margin-bottom:8px;">PROBLEMA 6 · AMBIENTE Y TRAZABILIDAD</span>
+              <div class="agy-stat-title">Presión en Hábitats H01/H02 y 0% Trazabilidad</div>
+              <p style="font-size:13.5px;margin-top:6px;">El tránsito empírico invade el Humedal Manacacías (<strong>H01</strong>) y la Reserva Indígena Corocito (<strong>H02</strong>), mientras el <strong>100% de los lotes</strong> carece de registro digital de temperatura y tiempo ante ICA/INVIMA.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('prob6')">+ Ver Evidencia y Datos</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Simulador Interactivo de Área Térmica con Time Crosshair Arrastrable (Inspirado en Hero 57) -->
+      <div class="agy-crosshair-panel">
+        <div class="agy-math-top" style="padding-bottom:14px;margin-bottom:12px;">
+          <div class="agy-math-heading">
+            <h2>Simulador Interactivo de Degradación Térmica · Cachama (<em style="font-family:var(--font-serif);font-style:italic;font-weight:400;">Colossoma macropomum</em>)</h2>
+            <p>Arrastra el cursor de tiempo (<strong>0.0 h → 10.0 h</strong>) para comparar en vivo qué le ocurre a los <strong>265.75 kg/día</strong> sin solución (30 °C) frente a la cadena de frío optimizada (0 °C).</p>
           </div>
           <div class="agy-math-eq" aria-label="D acumulada igual a D sub cero más sumatoria de k sub i por t sub i">
-            <var>D</var><sub>acum</sub> <span>=</span> <var>D</var><sub>0</sub> <span>+</span> <span>&Sigma;</span> ( <var>k</var><sub>i</sub> &middot; <var>t</var><sub>i</sub> )
+            <var>D</var><sub>acum</sub>(<var>t</var>) <span>=</span> <var>D</var><sub>0</sub> <span>+</span> &Sigma; ( <var>k</var><sub>base</sub> &middot; <var>&phi;</var><sub>D</sub> &middot; <var>t</var><sub>i</sub> )
           </div>
         </div>
-        <div class="agy-math-params">
-          <div class="agy-math-param-card">
-            <span class="agy-math-param-val">2.5% / hora</span>
-            <span class="agy-math-param-lbl">Tasa Base (<var style="font-family:var(--font-serif);font-style:italic;">k</var><sub>base</sub> a 30 °C)</span>
-            <span class="agy-math-param-sub">Degradación estándar en canoa artesanal sin hielo</span>
-          </div>
-          <div class="agy-math-param-card">
-            <span class="agy-math-param-val" style="color:var(--color-ember-accent);">×1.5 (3.75% / h)</span>
-            <span class="agy-math-param-lbl">Zonas Críticas de Deterioro (D)</span>
-            <span class="agy-math-param-sub">Multiplicador térmico en pasos descubiertos sin sombra</span>
-          </div>
-          <div class="agy-math-param-card">
-            <span class="agy-math-param-val" style="color:var(--color-electric-link);">+0.25 h (+15 min)</span>
-            <span class="agy-math-param-lbl">Penalización de Muelle (M)</span>
-            <span class="agy-math-param-sub">Espera bajo radiación solar en transbordo lancha → camión</span>
-          </div>
-          <div class="agy-math-param-card">
-            <span class="agy-math-param-val" style="color:#10b981;">0 °C &rarr; t = 0.0 h</span>
-            <span class="agy-math-param-lbl">Abatimiento en Centro Frío (F)</span>
-            <span class="agy-math-param-sub">Reinicia el reloj térmico y extiende la vida útil a 360 h (15 días)</span>
+
+        <div class="agy-crosshair-controls">
+          <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--color-saffron-spark);">TIEMPO DE EXPOSICIÓN (t): <strong id="agy-sim-time-lbl" style="font-size:16px;color:var(--color-bone-white);">2.20 h (132 min)</strong></span>
+          <input id="agy-sim-time-slider" class="agy-time-slider" type="range" min="0" max="10" step="0.1" value="2.2" oninput="agyActualizarCrosshairTermico(this.value)" aria-label="Horas de exposición térmica">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="agy-ctrl-btn" onclick="document.getElementById('agy-sim-time-slider').value=0.48;agyActualizarCrosshairTermico(0.48)">P01 (0.48 h)</button>
+            <button class="agy-ctrl-btn" onclick="document.getElementById('agy-sim-time-slider').value=2.20;agyActualizarCrosshairTermico(2.20)">P05 con F02 (2.20 h)</button>
+            <button class="agy-ctrl-btn" onclick="document.getElementById('agy-sim-time-slider').value=4.00;agyActualizarCrosshairTermico(4.00)">Límite FAO (4.0 h)</button>
+            <button class="agy-ctrl-btn" onclick="document.getElementById('agy-sim-time-slider').value=9.48;agyActualizarCrosshairTermico(9.48)">Sin Frío a Bogotá (9.48 h)</button>
           </div>
         </div>
+
+        <div id="agy-sim-svg-wrap" style="width:100%;overflow:hidden;"></div>
+        <div id="agy-sim-readout-cards" class="agy-bento-grid-4" style="margin-top:16px;margin-bottom:0;"></div>
       </div>
     </article>
 
-    <!-- DIAPOSITIVA 6: NÚCLEO ALGORÍTMICO, MODELO MATEMÁTICO Y DEFENSA TÉCNICA -->
+    <!-- DIAPOSITIVA 6: QUÉ HACE EL PROGRAMA, TEORÍAS DE PROGRAMACIÓN, CONSTRUCCIÓN DE GRAFOS Y DEFENSA TÉCNICA -->
     <article id="agy-ed-slide-5" class="agy-ed-slide">
       <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;padding-bottom:24px;border-bottom:1px dashed var(--color-cork-border);margin-bottom:28px;">
         <div>
-          <h2>Proceso Algorítmico, Modelo Matemático y Criterios de Decisión</h2>
-          <p style="margin-top:6px;">Implementación 100% propia desde cero sobre Lista de Adyacencia Hash O(1) — sin librerías externas de cálculo.</p>
+          <span class="agy-badge" style="color:var(--color-electric-iris);border-color:rgba(128,82,255,0.45);margin-bottom:10px;">FASE 2 · ARQUITECTURA DE SOFTWARE, TEORÍAS DE PROGRAMACIÓN Y CONSTRUCCIÓN DE GRAFOS</span>
+          <h2>Qué Hace el Programa, Teorías de Programación y Construcción de los Grafos</h2>
+          <p style="margin-top:6px;">Implementación 100% propia desde cero en Python — Explicación teórica, orden exacto de construcción (Vial, Ríos y Mixto), analogía del sistema y defensa cuantitativa.</p>
         </div>
         <div class="agy-cta-row">
-          <button class="agy-pill-ghost" onclick="agyCambiarSlide(4, false)">Ver Grafo en Vivo</button>
+          <button class="agy-pill-ghost" onclick="agyCambiarSlide(4, false)">Ver Grafo Mixto en Vivo</button>
           <button class="agy-pill-cta" onclick="agyCambiarSlide(6, false)">Ver Validación FLP →</button>
+        </div>
+      </div>
+
+      <!-- BLOQUE 1: LAS 6 TEORÍAS DE PROGRAMACIÓN Y ESTRUCTURAS DE DATOS QUE USA EL PROGRAMA -->
+      <div class="agy-math-showcase" style="margin-bottom:28px;">
+        <div class="agy-math-top">
+          <div class="agy-math-heading">
+            <h3>1. Qué Hace el Programa (`main.py`) y Qué Teorías de Programación Utiliza</h3>
+            <p>El software ejecuta un pipeline automatizado de 10 etapas apoyado en 6 paradigmas teóricos de Ciencias de la Computación. Haz clic en <strong>+ Qué es y Cómo se Aplica</strong> para ver su defensa técnica.</p>
+          </div>
+          <span class="agy-badge" style="color:#10b981;border-color:rgba(16,185,129,0.45);">0 LIBRERÍAS EXTERNAS DE CÁLCULO (ADR-01)</span>
+        </div>
+
+        <div class="agy-bento-grid-3" style="margin-bottom:0;">
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-saffron-spark);margin-bottom:8px;">TEORÍA 1 · GRAFOS Y TABLAS HASH O(1)</span>
+              <div class="agy-stat-title">Lista de Adyacencia sobre Diccionarios Hash + POO</div>
+              <p style="font-size:13.5px;margin-top:6px;"><strong>Qué es:</strong> Representa el grafo como un mapa disperso <code>_adyacencia: Dict[str, List[Arista]]</code> y <code>_nodos: Dict[str, Nodo]</code>.<br><strong>Por qué se usó:</strong> Con 25 nodos y 41 aristas (densidad 6.8%), evita desperdiciar el 93.2% de memoria de una matriz densa 25×25 y accede a cualquier vértice en <strong>O(1)</strong>.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('teo1')">+ Qué es y Cómo se Defiende</button>
+          </div>
+
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-electric-iris);margin-bottom:8px;">TEORÍA 2 · HEAP BINARIO Y PODA VORAZ</span>
+              <div class="agy-stat-title">Dijkstra con Min-Heap (`heapq`) + Poda FAO (Branch &amp; Bound)</div>
+              <p style="font-size:13.5px;margin-top:6px;"><strong>Qué es:</strong> Estrategia voraz (<em>Greedy</em>) sobre árbol binario completo en arreglo donde el padre siempre es menor o igual a sus hijos.<br><strong>Aplicación:</strong> Extrae el nodo de menor costo/tiempo en <strong>O(log V)</strong> y poda en vivo toda ruta cuyo tiempo sin frío supere <strong>4.0 h (240 min)</strong>.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('teo2')">+ Qué es y Cómo se Defiende</button>
+          </div>
+
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-electric-link);margin-bottom:8px;">TEORÍA 3 · PROGRAMACIÓN DINÁMICA</span>
+              <div class="agy-stat-title">Bellman-Ford O(V·E) y Floyd-Warshall O(V³)</div>
+              <p style="font-size:13.5px;margin-top:6px;"><strong>Qué es:</strong> Resuelve problemas complejos descomponiéndolos en subproblemas superpuestos con principio de optimalidad.<br><strong>Aplicación:</strong> Bellman-Ford relaja aristas en V−1 fases y certifica <strong>0 ciclos negativos</strong>; Floyd-Warshall calcula la matriz 25×25 todos-contra-todos.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('teo3')">+ Qué es y Cómo se Defiende</button>
+          </div>
+
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:#10b981;margin-bottom:8px;">TEORÍA 4 · BÚSQUEDA EN GRAFOS (BFS / DFS)</span>
+              <div class="agy-stat-title">Cola FIFO (`deque`) en BFS y Pila con Backtracking en DFS</div>
+              <p style="font-size:13.5px;margin-top:6px;"><strong>Qué es:</strong> Exploración sistemática por niveles (BFS en O(V+E)) y en profundidad con retroceso (DFS).<br><strong>Aplicación:</strong> BFS halla la ruta con <strong>menor número de transbordos</strong> hacia F02; DFS enumera todas las rutas simples de contingencia si se bloquea una vía.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('teo4')">+ Qué es y Cómo se Defiende</button>
+          </div>
+
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-saffron-spark);margin-bottom:8px;">TEORÍA 5 · DAG TOPOLÓGICO Y GRAFOS G(t)</span>
+              <div class="agy-stat-title">Orden Topológico de Kahn O(V+E) y Grafo Bitemporal</div>
+              <p style="font-size:13.5px;margin-top:6px;"><strong>Qué es:</strong> Un DAG es un grafo dirigido sin ciclos; el algoritmo de Kahn ordena dependencias por grado de entrada 0.<br><strong>Aplicación:</strong> Certifica la trazabilidad sanitaria ICA/INVIMA de los 7 lotes y conmuta la topología entre pesca (G_pesca) y veda (G_veda).</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('teo5')">+ Qué es y Cómo se Defiende</button>
+          </div>
+
+          <div class="agy-plinth-card obsidian">
+            <div>
+              <span class="agy-badge" style="color:var(--color-ember-accent);margin-bottom:8px;">TEORÍA 6 · OPTIMIZACIÓN COMBINATORIA</span>
+              <div class="agy-stat-title">Facility Location Problem (FLP Greedy + MILP)</div>
+              <p style="font-size:13.5px;margin-top:6px;"><strong>Qué es:</strong> Selección óptima de instalaciones sujetas a capacidad, cobertura temporal y costo fijo/variable.<br><strong>Aplicación:</strong> Evalúa los subconjuntos de <code>F01, F02, F03</code> y demuestra que abrir <strong>Solo F02</strong> minimiza el costo en $13.02M/mes con 100% de cobertura FAO.</p>
+            </div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('teo6')">+ Qué es y Cómo se Defiende</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOQUE 2: METODOLOGÍA TEÓRICA Y PRÁCTICA DE CONSTRUCCIÓN DE LOS GRAFOS + ANALOGÍA Y DEFENSA -->
+      <div class="agy-math-showcase" style="margin-bottom:28px;">
+        <div class="agy-math-top">
+          <div class="agy-math-heading">
+            <h3>2. Cómo se Construyeron los Grafos (Vial, Ríos y Unión Multimodal), Analogía y Por Qué se Decidió Así</h3>
+            <p>Selecciona cada etapa para ver exactamente qué información se usó, qué se creó primero en memoria, cómo se unieron ambos grafos y cómo defender cada decisión de diseño.</p>
+          </div>
+          <span class="agy-badge" style="color:var(--color-saffron-spark);border-color:rgba(255,184,41,0.45);">GUÍA DE DEFENSA Y ARQUITECTURA</span>
+        </div>
+
+        <div class="agy-step-tabs" role="tablist">
+          <button class="agy-step-tab active" onclick="agyCambiarPasoConstruccion(0)" id="agy-step-btn-0">Paso 1 · Estructura Base y 7 Tipos de Vértices</button>
+          <button class="agy-step-tab" onclick="agyCambiarPasoConstruccion(1)" id="agy-step-btn-1">Paso 2 · Construcción del Grafo Vial (OSRM)</button>
+          <button class="agy-step-tab" onclick="agyCambiarPasoConstruccion(2)" id="agy-step-btn-2">Paso 3 · Construcción del Grafo de Ríos (rios.shp)</button>
+          <button class="agy-step-tab" onclick="agyCambiarPasoConstruccion(3)" id="agy-step-btn-3">Paso 4 · Unión Multimodal, Analogía y Defensa</button>
+        </div>
+
+        <!-- PANE 0: ESTRUCTURA BASE Y VÉRTICES -->
+        <div class="agy-step-pane active" id="agy-step-pane-0">
+          <div class="agy-bento-grid-2" style="margin-bottom:0;">
+            <div class="agy-plinth-card obsidian">
+              <h3>Qué se hizo exactamente primero en código (`main.py` → `cargar_datos()`)</h3>
+              <p style="font-size:14px;">1.º <strong>Primero se instanció el contenedor vacío</strong> <code>grafo = GrafoLogistico()</code> en memoria con dos diccionarios Hash vacíos: <code>_nodos = {{}}</code> y <code>_adyacencia = {{}}</code>.<br>
+              2.º <strong>Después se cargaron y tipificaron los 25 vértices</strong> desde 3 archivos CSV verificables (<code>nodos_pesca.csv</code>, <code>nodos_centros.csv</code> y <code>nodos_destinos.csv</code>) asignando a cada objeto <code>Nodo</code> su categoría semántica (<code>P, M, A, F, D, H, V</code>), coordenadas WGS84 y reglas operativas.<br>
+              3.º <strong>Finalmente se inyectaron las 41 aristas dirigidas</strong> desde <code>aristas.csv</code> con 19 campos reales y 3 tipos de vía (<code>fluvial</code>, <code>acceso_local</code>, <code>terrestre</code>).</p>
+            </div>
+            <div class="agy-plinth-card obsidian">
+              <h3>Por qué 7 Tipos de Vértices Reales y no Nodos Iguales (`ADR-04`)</h3>
+              <p style="font-size:14px;">En un grafo académico simple todos los vértices son iguales; en la realidad de Puerto Gaitán eso daría resultados falsos. Por eso cada tipo altera matemáticamente el flujo:<br>
+              • <strong>P (7 Pesca):</strong> Inyectan los 265.75 kg/día.<br>
+              • <strong>M (3 Muelles):</strong> Transbordo agua→tierra (+0.25 h de espera al sol sin frío).<br>
+              • <strong>A (3 Acopios):</strong> Consolidación obligatoria antes del frío (<code>ADR-06</code>).<br>
+              • <strong>F (3 Centros Frío):</strong> Abaten a 0 °C, reinician <code>t_sin_frio = 0</code> (capacidad 5,000 kg).<br>
+              • <strong>D (2 Deterioro):</strong> Multiplican la pérdida térmica del tramo por <strong>×1.5</strong> (3.75%/h).<br>
+              • <strong>H (2 Hábitats/Resguardos):</strong> Con <code>evitar_restringidos=True</code> quedan bloqueados como paso intermedio.<br>
+              • <strong>V (5 Mercados):</strong> Nodos destino de demanda comercial.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 1: GRAFO VIAL -->
+        <div class="agy-step-pane" id="agy-step-pane-1">
+          <div class="agy-bento-grid-2" style="margin-bottom:0;">
+            <div class="agy-plinth-card obsidian">
+              <h3>Construcción Teórica y Práctica del Subgrafo Vial (`31 Aristas`, `19 Vértices`)</h3>
+              <p style="font-size:14px;">• <strong>Fuentes de información:</strong> Levantamiento de vías terrestres entre muelles, acopios, centros de frío y mercados + API pública de ruteo <strong>OSRM (Open Source Routing Machine)</strong> en <code>src/visualization/route_geometry.py</code>.<br>
+              • <strong>Clasificación de carreteras:</strong> Se separaron en <strong>12 aristas de <code>acceso_local</code></strong> (trochas y caminos veredales en estado regular/malo que conectan muelles y acopios con velocidades menores y mayor riesgo de retraso) y <strong>19 aristas <code>terrestres</code></strong> (corredor pavimentado Ruta Nacional 40 Puerto Gaitán → Puerto López → Villavicencio → Bogotá).<br>
+              • <strong>Anclaje geométrico y caché:</strong> Para cada par <code>(origen, destino)</code> vial, <code>_anclar_extremos()</code> une la polilínea real OSRM con la coordenada exacta del vértice y la guarda en <code>data/output/rutas_cache.json</code>.</p>
+            </div>
+            <div class="agy-plinth-card obsidian">
+              <h3>Defensa Técnica: ¿Por qué OSRM con Caché Persistente y no Distancias Rectas?</h3>
+              <p style="font-size:14px;">1. <strong>Fidelidad topográfica:</strong> Una línea recta entre Puerto Gaitán y Bogotá mide ~215 km, pero por la carretera real (cruzando el piedemonte llanero en Villavicencio y Boquerón) son <strong>289 a 295.5 km</strong> con peajes y pendientes.<br>
+              2. <strong>Autonomía 100% offline y cero costo (`ADR-03`):</strong> Al persistir las 48 polilíneas en <code>rutas_cache.json</code>, el programa corre en <strong>menos de 2 segundos sin internet</strong> y sin pagar licencias comerciales (como Google Maps API o Felt de pago).</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 2: GRAFO DE RÍOS -->
+        <div class="agy-step-pane" id="agy-step-pane-2">
+          <div class="agy-bento-grid-2" style="margin-bottom:0;">
+            <div class="agy-plinth-card obsidian">
+              <h3>Construcción del Grafo Hidrológico Fluvial (`RedFluvial` sobre `rios.shp`)</h3>
+              <p style="font-size:14px;">• <strong>Fuente cartográfica:</strong> Shapefile oficial del IGAC <code>data/shapefiles/rios.shp</code> en proyección <code>EPSG:4326</code> recortado al <em>bounding box</em> de la cuenca.<br>
+              • <strong>Discretización en Grafo No Dirigido:</strong> En <code>src/visualization/river_network.py</code>, cada geometría <code>LineString</code> se descompone en <strong>12,413 vértices <code>(lon, lat)</code></strong> (redondeados a 5 decimales ≈ 1.1 m para fusionar confluencias de ríos) y <strong>24,790 aristas fluviales</strong> ponderadas con la fórmula geodésica de <strong>Haversine</strong>.<br>
+              • <strong>Índice Espacial Hash (Rejilla de 447 celdas de 0.05°×0.05°):</strong> Permite proyectar cualquier punto de pesca al cauce navegable más cercano (<code>enlace_al_cauce()</code>) en tiempo constante sin recorrer los 12,413 vértices.<br>
+              • <strong>Dijkstra Fluvial Propio:</strong> Calcula sobre los meandros reales del río las <strong>10 aristas fluviales</strong> del modelo.</p>
+            </div>
+            <div class="agy-plinth-card obsidian">
+              <h3>Defensa Técnica: ¿Por qué un Segundo Grafo Fluvial No Dirigido?</h3>
+              <p style="font-size:14px;">1. <strong>Por qué no dirigido en el agua y dirigido en la logística:</strong> Las canoas a motor navegan físicamente aguas arriba y aguas abajo sobre el mismo cauce (por eso <code>RedFluvial</code> es no dirigido), pero el flujo comercial del pescado va estrictamente de captura a mercado (por eso <code>GrafoLogistico</code> es dirigido).<br>
+              2. <strong>Por qué desacoplar los 12,413 vértices del grafo de 25 nodos:</strong> Si metiéramos los 12,413 vértices del shapefile dentro de Floyd-Warshall $O(V^3)$, haría $1.9 \times 10^{12}$ operaciones (tardaría horas). Al precalcular los 10 tramos fluviales reales sobre <code>RedFluvial</code> e inyectarlos como 10 aristas ponderadas en <code>GrafoLogistico</code>, Floyd-Warshall tarda <strong>menos de 1 milisegundo</strong> ($25^3 = 15,625$ pasos) conservando la geometría real del río.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 3: UNIÓN Y ANALOGÍA -->
+        <div class="agy-step-pane" id="agy-step-pane-3">
+          <div class="agy-bento-grid-2" style="margin-bottom:0;">
+            <div class="agy-plinth-card obsidian">
+              <h3>La Analogía de Ingeniería y Cómo se Unen Ambos Grafos en G=(V,E)</h3>
+              <p style="font-size:14px;">• <strong>Punto de soldadura (Los Nodos Puente `M` y `A`):</strong> El Grafo de Ríos (10 aristas azules) y el Grafo Vial (31 aristas ámbar/violeta) se unen exactamente en los <strong>Muelles de Transbordo (<code>M01, M02, M03</code>) y Acopios Ribereños (<code>A01, A02, A03</code>)</strong>, que tienen grado de entrada fluvial &gt; 0 y grado de salida terrestre &gt; 0.<br>
+              • <strong>Analogía de una Red de Transmisión con Regeneradores de Señal:</strong><br>
+              — <em>Los ríos y canoas</em> son líneas de baja velocidad donde la "señal" (frescura del pescado) sufre atenuación térmica continua (2.5%/h).<br>
+              — <em>Los Muelles (M)</em> son convertidores de medio físico (agua → camión) con una latencia fija de +15 min.<br>
+              — <em>Los Centros de Frío (F)</em> actúan como <strong>repetidores regenerativos</strong>: antes de que la señal caiga del umbral de 4.0 h (histamina), abaten la temperatura a 0 °C y restauran la vida útil a 360 h.<br>
+              — <em>Los Hábitats (H)</em> son cortafuegos (<em>firewalls</em>) que bloquean el enrutamiento por zonas prohibidas.</p>
+            </div>
+            <div class="agy-plinth-card obsidian">
+              <h3>Criterio de Defensa: Preguntas Clave que Puedes Responder con Total Seguridad</h3>
+              <p style="font-size:14px;">• <strong>¿Por qué usar un peso multicriterio de 6 factores (`w_ij`) y no solo tiempo o distancia?</strong> Porque la ruta más corta en km puede ser una trocha destapada con 35% de probabilidad de retraso y alto riesgo térmico; el peso combinado equilibra Tiempo (25%), Costo (20%), Riesgo (20%), Pérdida (10%), Inestabilidad (10%) y Retraso (5%).<br>
+              • <strong>¿Por qué implementar simultáneamente Dijkstra, Bellman-Ford y Floyd-Warshall?</strong> Porque cumplen roles complementarios: <strong>Dijkstra</strong> resuelve el ruteo puntual en $O((V+E)\log V)$, <strong>Bellman-Ford</strong> audita formalmente la ausencia de ciclos negativos y valida al 100% los tiempos de Dijkstra, y <strong>Floyd-Warshall</strong> entrega la matriz completa $25\times 25$ que necesita el optimizador FLP para evaluar cualquier combinación de centros en $O(1)$.</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2186,11 +2595,11 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
       <div class="agy-math-showcase">
         <div class="agy-math-top" style="border-bottom:none;padding-bottom:0;">
           <div class="agy-math-heading">
-            <h3>Función Objetivo de Peso Multicriterio por Arista (ADR-02)</h3>
-            <p>Pondera 6 dimensiones operativas normalizadas para hallar rutas óptimas resilientes.</p>
+            <h3>3. Auditor Interactivo de la Función Multicriterio por Arista (ADR-02)</h3>
+            <p>Selecciona cualquiera de las 41 aristas reales para inspeccionar cómo el programa calcula su peso combinado.</p>
           </div>
           <div class="agy-math-eq">
-            <var>w</var><sub>ij</sub> <span>=</span> 0.25<var>t&#770;</var> <span>+</span> 0.20<var>c&#770;</var> <span>+</span> 0.20<var>r</var><sub>comb</sub> <span>+</span> 0.10<var>p&#770;</var> <span>+</span> 0.10(1&minus;<var>q</var>) <span>+</span> 0.05<var>P</var><sub>ret</sub>
+            <var>w</var><sub>ij</sub> <span>=</span> 0.25<var>t&#770;</var><sub>ij</sub> <span>+</span> 0.20<var>c&#770;</var><sub>ij</sub> <span>+</span> 0.20<var>r</var><sub>comb</sub> <span>+</span> 0.10<var>p&#770;</var><sub>ij</sub> <span>+</span> 0.10(1&minus;<var>q</var><sub>ij</sub>) <span>+</span> 0.05<var>P</var><sub>ret</sub>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
             <label for="agy-ed-edge-sim" style="font-size:13px;font-weight:500;color:var(--color-warm-cream);">Auditar Arista:</label>
@@ -2223,18 +2632,20 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
       </div>
     </article>
 
-    <!-- DIAPOSITIVA 7: SOLUCIÓN PROPUESTA (FLP GREEDY), ESCENARIOS Y TIEMPOS TÉRMICOS -->
+    <!-- DIAPOSITIVA 7: SOLUCIÓN PROPUESTA (FLP GREEDY), ESCENARIOS, MÉTRICAS Y CRITERIO DE DEFENSA -->
     <article id="agy-ed-slide-6" class="agy-ed-slide">
       <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;padding-bottom:24px;border-bottom:1px dashed var(--color-cork-border);margin-bottom:28px;">
         <div>
-          <h2>La Solución Propuesta: Localización Óptima FLP y Cumplimiento Térmico</h2>
-          <p style="margin-top:6px;">Demostración cuantitativa sobre los 5 escenarios de inversión frigorífica y tiempos de acceso sin frío de las 7 asociaciones.</p>
+          <span class="agy-badge" style="color:var(--color-saffron-spark);border-color:rgba(255,184,41,0.45);margin-bottom:10px;">FASE 3 · DEMOSTRACIÓN CUANTITATIVA Y CRITERIO DE DEFENSA DE LA SOLUCIÓN FLP</span>
+          <h2>La Solución Cuantitativa: Localización Óptima FLP, Métricas y Defensa</h2>
+          <p style="margin-top:6px;">Demostración numérica sobre los 5 escenarios de inversión frigorífica, tiempos de acceso sin frío de las 7 asociaciones y justificación ante cuestionamientos.</p>
         </div>
         <div class="agy-cta-row">
           <div class="agy-ctrl-group">
             <button id="agy-ed-dest-pg" class="agy-ctrl-btn active" onclick="agyCambiarDestinoEditorial('PG')">Escenario Local (Pto. Gaitán)</button>
             <button id="agy-ed-dest-bog" class="agy-ctrl-btn" onclick="agyCambiarDestinoEditorial('BOG')">Corredor Nacional (Bogotá)</button>
           </div>
+          <button class="agy-pill-cta" onclick="agyCambiarSlide(7, false)">Ir a Comparación Antes vs. Después →</button>
         </div>
       </div>
 
@@ -2243,22 +2654,22 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
         <div class="agy-plinth-card highlight-saffron">
           <div class="agy-stat-num">Solo F02</div>
           <div class="agy-stat-title">Configuración Óptima FLP</div>
-          <div class="agy-stat-desc">Centro Frío Puerto Gaitán en el casco urbano consolida toda la cuenca sin abrir plantas redundantes.</div>
+          <div class="agy-stat-desc">Centro Frío Puerto Gaitán en el casco urbano consolida toda la cuenca (265.75 kg/día = 5.3% de su capacidad de 5,000 kg).</div>
         </div>
         <div class="agy-plinth-card highlight-iris">
           <div class="agy-stat-num">100<span class="agy-stat-unit">%</span></div>
           <div class="agy-stat-title">Cobertura Sanitaria FAO</div>
-          <div class="agy-stat-desc">Las 7 asociaciones pesqueras ingresan a refrigeración en t ≤ 2.20 h (muy por debajo del límite de 4.0 h).</div>
+          <div class="agy-stat-desc">Las 7 asociaciones pesqueras ingresan a refrigeración en t ≤ 2.20 h (reducción del −76.8% frente a las 9.48 h sin frío).</div>
         </div>
         <div class="agy-plinth-card">
           <div class="agy-stat-num">$13.02<span class="agy-stat-unit">M/mes</span></div>
           <div class="agy-stat-title">Costo Operativo Optimizado</div>
-          <div class="agy-stat-desc">$13,023,272 COP/mes ($59,080 COP/kg), equilibrando costo fijo de planta y fletes de acarreo.</div>
+          <div class="agy-stat-desc">$13,023,272 COP/mes hacia Bogotá ($59,080 COP/kg) y $5,523,133 COP/mes en distribución local ($21,285 COP/kg).</div>
         </div>
         <div class="agy-plinth-card">
           <div class="agy-stat-num" style="color:#10b981;">$10.0<span class="agy-stat-unit">M/mes</span></div>
-          <div class="agy-stat-title">Ahorro Directo Mensual</div>
-          <div class="agy-stat-desc">Evita el sobrecosto de operar las 3 plantas frigoríficas simultáneamente ($23,023,272 COP/mes).</div>
+          <div class="agy-stat-title">Ahorro Directo Mensual (−43.4%)</div>
+          <div class="agy-stat-desc">Evita el sobrecosto de operar las 3 plantas frigoríficas simultáneamente ($23,023,272 COP/mes = $120M COP/año desperdiciados).</div>
         </div>
       </div>
 
@@ -2274,85 +2685,111 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
           <div id="agy-ed-thermal-chart" style="margin-top:10px;"></div>
         </div>
       </div>
+
+      <!-- Guía de Defensa y Cuestionamiento Crítico de la Solución FLP -->
+      <div class="agy-math-showcase" style="margin-bottom:0;">
+        <div class="agy-math-top">
+          <div class="agy-math-heading">
+            <h3>Criterio de Defensa: Cómo Cuestionar y Defender Numéricamente la Decisión «Solo F02»</h3>
+            <p>Respuestas cuantitativas exactas ante las 3 objeciones técnicas más frecuentes en sustentación.</p>
+          </div>
+          <span class="agy-badge" style="color:#10b981;border-color:rgba(16,185,129,0.45);">DEFENSA BASADA EN MÉTRICAS</span>
+        </div>
+        <div class="agy-bento-grid-3" style="margin-bottom:0;">
+          <div class="agy-plinth-card obsidian">
+            <div class="agy-stat-title" style="color:var(--color-saffron-spark);">1. ¿Por qué F02 y no F01 (Alto Neblinas)?</div>
+            <p style="font-size:13.5px;">Aunque F01 queda cerca de P01 y P02, las asociaciones del río Iteviare y sur (<strong>P03, P04, P05 = 111.75 kg/día, 42% de la oferta</strong>) entran por A01 y M02 hacia el casco urbano. Obligarlas a subir a F01 añade desvíos por vía regular; <strong>F02</strong> está en el nodo articulador urbano con energía trifásica confiable y salida directa a la Ruta 40.</p>
+          </div>
+          <div class="agy-plinth-card obsidian">
+            <div class="agy-stat-title" style="color:var(--color-electric-iris);">2. ¿Por qué no F03 (Puerto López)?</div>
+            <p style="font-size:13.5px;">Puerto López (F03) está a <strong>89 km al occidente</strong> por carretera nacional. Si no hay frío en Puerto Gaitán (F02), el pescado de P05 tardaría <strong>&gt; 4.15 h</strong> en llegar a F03 (violando el límite FAO de 4.0 h). Por eso F03 funciona como nodo de relevo hacia Bogotá, pero no sustituye a F02.</p>
+          </div>
+          <div class="agy-plinth-card obsidian">
+            <div class="agy-stat-title" style="color:#10b981;">3. ¿Por qué no abrir los 3 centros (F01+F02+F03)?</div>
+            <p style="font-size:13.5px;">Porque la oferta total (<strong>265.75 kg/día</strong>) cabe 18 veces dentro de un solo centro (<strong>5,000 kg</strong>). Abrir 3 plantas sube el costo fijo de <strong>$5M a $15M COP/mes (+200%)</strong> mientras la merma local permanece idéntica en <strong>2.4% (6.3 kg)</strong>. Es decir: gastar $10M/mes extra por 0.0 kg de mejora.</p>
+          </div>
+        </div>
+      </div>
     </article>
 
-    <!-- DIAPOSITIVA 8: CONCLUSIONES, ANTES VS DESPUÉS E IMPACTO REGIONAL -->
+    <!-- DIAPOSITIVA 8: COMPARADOR INTERACTIVO ANTES VS DESPUÉS Y DELIMITACIÓN DE ÁREAS EXTERNAS -->
     <article id="agy-ed-slide-7" class="agy-ed-slide">
       <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;padding-bottom:24px;border-bottom:1px dashed var(--color-cork-border);margin-bottom:28px;">
         <div>
-          <h2>Validación Final, Conclusiones e Impacto Socioeconómico</h2>
-          <p style="margin-top:6px;">Síntesis de ingeniería de estructuras de datos y valor público entregado al corredor pesquero de Puerto Gaitán, Meta.</p>
+          <span class="agy-badge" style="color:#10b981;border-color:rgba(16,185,129,0.45);margin-bottom:10px;">FASE 4 · COMPARACIÓN INTERACTIVA ANTES VS. DESPUÉS Y DELIMITACIÓN DE ALCANCE</span>
+          <h2>Comparación Interactiva (Sin Solución vs. Con Solución) y Conclusiones</h2>
+          <p style="margin-top:6px;">Contraste numérico y didáctico de todas las problemáticas iniciales frente al modelo optimizado G=(V,E), y separación de problemas externos.</p>
         </div>
         <div class="agy-cta-row">
           <button class="agy-pill-cta" onclick="agyCambiarSlide(4, false)">Ir al Grafo Mixto Interactivo</button>
-          <button class="agy-pill-ghost" onclick="agyCambiarSlide(0, false)">Volver a Portada</button>
+          <button class="agy-pill-ghost" onclick="agyCambiarSlide(0, false)">Volver a Problemáticas (Slide 1)</button>
         </div>
       </div>
 
-      <div class="agy-bento-grid-2">
-        <div class="agy-plinth-card highlight-iris">
-          <h3>Demostración Irrefutable: Antes vs. Con el Modelo Optimizado</h3>
-          <table class="agy-table" style="margin-top:10px;">
-            <thead>
-              <tr>
-                <th>Indicador Crítico</th>
-                <th>Antes (Sin Frío)</th>
-                <th>Modelo Optimizado G=(V,E)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Pérdida poscaptura regional</td>
-                <td style="color:var(--color-ember-accent);">Hasta 40.0% (36.1% sim.)</td>
-                <td style="color:#10b981;font-weight:600;">1.3% local / 2.1% a Bogotá</td>
-              </tr>
-              <tr>
-                <td>Cumplimiento sanitario (t ≤ 4.0 h)</td>
-                <td style="color:var(--color-ember-accent);">0.0% (Riesgo biológico)</td>
-                <td style="color:#10b981;font-weight:600;">100.0% (7/7 asociaciones)</td>
-              </tr>
-              <tr>
-                <td>Tiempo máximo expuesto al sol</td>
-                <td style="color:var(--color-ember-accent);">> 9.5 h hasta mercado</td>
-                <td style="color:var(--color-saffron-spark);font-weight:600;">Máx. 2.20 h (132 min en P05)</td>
-              </tr>
-              <tr>
-                <td>Inversión operativa mensual FLP</td>
-                <td>Sin infraestructura</td>
-                <td style="color:var(--color-warm-cream);font-weight:600;">$13.02M/mes (Ahorra $10M vs 3 CF)</td>
-              </tr>
-              <tr>
-                <td>Protección de hábitats (H01, H02)</td>
-                <td>Tránsito sin control</td>
-                <td style="color:#10b981;font-weight:600;">100% excluidos como paso intermedio</td>
-              </tr>
-            </tbody>
-          </table>
+      <!-- LABORATORIO COMPARADOR INTERACTIVO: ANTES (SIN SOLUCIÓN) VS DESPUÉS (CON SOLUCIÓN) -->
+      <div class="agy-math-showcase" style="margin-bottom:28px;">
+        <div class="agy-math-top">
+          <div class="agy-math-heading">
+            <h3>1. Comparador Interactivo: Problemáticas Sin Solución (Antes) vs. Con Solución Aplicada (Después)</h3>
+            <p>Filtra por dimensión o selecciona una asociación pesquera específica para comparar interactivamente las métricas antes y después del programa.</p>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+            <select id="agy-comp-filter" class="agy-ctrl-select" onchange="agyRenderizarComparadorInteractivo()" aria-label="Filtrar problemática a comparar">
+              <option value="all">Ver las 6 Problemáticas Comparadas</option>
+              <option value="merma">1. Pérdida Poscaptura y Deterioro (%)</option>
+              <option value="histamina">2. Tiempo al Sol e Inocuidad FAO (Horas / Min)</option>
+              <option value="costo">3. Costo Mensual FLP vs. 3 Plantas ($ COP)</option>
+              <option value="hielo">4. Cobertura Hielo 1:1 en Muelles (%)</option>
+              <option value="veda">5. Continuidad en Veda Abril–Junio (kg/día)</option>
+              <option value="trazabilidad">6. Hábitats H01/H02 y Trazabilidad DAG (%)</option>
+            </select>
+            <select id="agy-comp-asoc" class="agy-ctrl-select" onchange="agyRenderizarComparadorAsociacion(this.value)" aria-label="Comparar asociación específica">
+              <option value="P05">Inspeccionar Asociación: P05 Puerto Trujillo (Crítico 63 km)</option>
+              <option value="P01">Inspeccionar Asociación: P01 ASOPESGA Alto Neblinas</option>
+              <option value="P02">Inspeccionar Asociación: P02 Atarraya Verde</option>
+              <option value="P03">Inspeccionar Asociación: P03 Asovida San Miguel</option>
+              <option value="P04">Inspeccionar Asociación: P04 Asopespor</option>
+              <option value="P06">Inspeccionar Asociación: P06 Desembarcadero Central</option>
+              <option value="P07">Inspeccionar Asociación: P07 Soplaviento</option>
+            </select>
+          </div>
         </div>
 
-        <div class="agy-plinth-card highlight-saffron">
-          <h3>Rigor en Estructuras de Datos y Verificación Automatizada</h3>
-          <div class="agy-prop-row"><span class="agy-prop-key">Representación del Grafo</span><span class="agy-prop-val">Lista de Adyacencia Hash O(|V|+|E|)</span></div>
-          <div class="agy-prop-row"><span class="agy-prop-key">Catálogo Topológico</span><span class="agy-prop-val">25 Vértices (7 tipos) · 41 Aristas (22 vars)</span></div>
-          <div class="agy-prop-row"><span class="agy-prop-key">Grafo Fluvial IGAC (rios.shp)</span><span class="agy-prop-val">12,413 V · 24,790 E · 447 celdas Hash</span></div>
-          <div class="agy-prop-row"><span class="agy-prop-key">Geometría Vial OSRM</span><span class="agy-prop-val">41 polilíneas reales en caché offline</span></div>
-          <div class="agy-prop-row"><span class="agy-prop-key">Algoritmos Propios</span><span class="agy-prop-val">Dijkstra, Bellman-Ford, Floyd-Warshall, BFS, DFS, FLP</span></div>
-          <div class="agy-prop-row"><span class="agy-prop-key">Suite de Pruebas Pytest</span><span class="agy-prop-val" style="color:#10b981;">38 / 38 pruebas unitarias 100% verdes</span></div>
-        </div>
+        <div id="agy-comp-cards-grid" class="agy-bento-grid-3" style="margin-bottom:18px;"></div>
+        <div id="agy-comp-asoc-detail" class="agy-plinth-card highlight-iris"></div>
       </div>
 
-      <div class="agy-bento-grid-3">
-        <div class="agy-plinth-card obsidian">
-          <div class="agy-stat-title" style="color:var(--color-saffron-spark);">1. Seguridad Alimentaria Regional</div>
-          <p style="font-size:14px;">Garantiza que los 265.8 kg/día capturados por los pescadores artesanales de Puerto Gaitán lleguen inocuos a Villavicencio y Bogotá.</p>
+      <!-- CONCLUSIÓN FINAL: LO SOLUCIONADO CON CÓDIGO VS LO QUE DEPENDE DE ÁREAS EXTERNAS -->
+      <div class="agy-math-showcase" style="margin-bottom:24px;">
+        <div class="agy-math-top">
+          <div class="agy-math-heading">
+            <h3>2. Conclusión de Ingeniería: Problemas Solucionados con Algoritmos vs. Problemas que Dependen de Áreas Externas</h3>
+            <p>Por qué ciertas problemáticas de la ECA se resuelven al 100% con nuestro software y por qué otras requieren intervención física, biológica o legal externa.</p>
+          </div>
+          <span class="agy-badge" style="color:var(--color-saffron-spark);border-color:rgba(255,184,41,0.45);">CRITERIO PROFESIONAL DE ALCANCE</span>
         </div>
-        <div class="agy-plinth-card obsidian">
-          <div class="agy-stat-title" style="color:#10b981;">2. Sostenibilidad Ambiental</div>
-          <p style="font-size:14px;">El parámetro algorítmico evitar_restringidos=True desvía automáticamente las embarcaciones fuera de los hábitats de desove H01 y H02.</p>
-        </div>
-        <div class="agy-plinth-card obsidian">
-          <div class="agy-stat-title" style="color:var(--color-electric-link);">3. Escalabilidad Computacional</div>
-          <p style="font-size:14px;">Arquitectura modular 100% autónoma y reproducible para planificar infraestructura agroindustrial en toda la cuenca de la Orinoquía.</p>
+
+        <div class="agy-bento-grid-2" style="margin-bottom:0;">
+          <div class="agy-plinth-card highlight-iris">
+            <h3 style="color:#10b981;">✓ Problemas 100% Solucionados por Nuestro Software (`G=(V,E)`)</h3>
+            <div class="agy-prop-row"><span class="agy-prop-key">1. Ruteo antes del límite FAO (4.0 h)</span><span class="agy-prop-val" style="color:#10b981;">100% resuelto (máx. 2.20 h en P05 con Dijkstra + Poda)</span></div>
+            <div class="agy-prop-row"><span class="agy-prop-key">2. Ubicación óptima de planta de frío</span><span class="agy-prop-val" style="color:#10b981;">Solo F02 ahorra $10,000,000 COP/mes (−43.4%)</span></div>
+            <div class="agy-prop-row"><span class="agy-prop-key">3. Ruteo y balance de masa Hielo 1:1</span><span class="agy-prop-val" style="color:#10b981;">531.5 kg/día validados al 100% contra capacidad_kg</span></div>
+            <div class="agy-prop-row"><span class="agy-prop-key">4. Conmutación en Veda (Abril–Junio)</span><span class="agy-prop-val" style="color:#10b981;">Grafo bitemporal G_veda mantiene 240 kg/día (t ≤ 0.21 h)</span></div>
+            <div class="agy-prop-row"><span class="agy-prop-key">5. Desvío de hábitats H01 y H02</span><span class="agy-prop-val" style="color:#10b981;">0 violaciones con evitar_restringidos=True</span></div>
+            <div class="agy-prop-row"><span class="agy-prop-key">6. Trazabilidad digital ICA/INVIMA</span><span class="agy-prop-val" style="color:#10b981;">7/7 lotes en DAG de Kahn O(V+E) + Tabla Hash O(1)</span></div>
+          </div>
+
+          <div class="agy-plinth-card highlight-saffron">
+            <h3 style="color:var(--color-saffron-spark);">⚠ Problemas que No Tienen Solución por Software (Áreas Externas)</h3>
+            <p style="font-size:13.5px;margin-bottom:8px;"><strong>¿Por qué no podíamos solucionarlos nosotros como desarrolladores?</strong> Porque son fenómenos bioquímicos, de infraestructura física o de soberanía legal que ocurren fuera del computador:</p>
+            <div class="agy-prop-row"><span class="agy-prop-key">1. Nivel de Mercurio (Hg) en peces</span><span class="agy-prop-val">Requiere Espectrometría Química en Laboratorio (GRITOX)</span></div>
+            <div class="agy-prop-row"><span class="agy-prop-key">2. Ciclo gonadal y fechas de veda</span><span class="agy-prop-val">Depende de Biología Reproductiva e Hidrología (AUNAP/SUSA)</span></div>
+            <div class="agy-prop-row"><span class="agy-prop-key">3. Examen sensorial de ojos/branquias</span><span class="agy-prop-val">Inspección física bromatológica en muelle (INVIMA)</span></div>
+            <div class="agy-prop-row"><span class="agy-prop-key">4. Cambiar cajas de madera y techar muelles</span><span class="agy-prop-val">Requiere Obra Civil y Dotación Física (Alcaldía / Cooperativas)</span></div>
+            <div class="agy-prop-row"><span class="agy-prop-key">5. Consulta previa en Resguardos Sikuani</span><span class="agy-prop-val">Proceso jurídico-constitucional y social (MinInterior / Kotsala)</span></div>
+            <button class="agy-modal-trigger" onclick="agyAbrirModalDetalle('externos')">+ Ver Explicación Detallada de Límites del Software</button>
+          </div>
         </div>
       </div>
     </article>
@@ -2398,6 +2835,10 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
         <select id="agy-quick-select" class="agy-ctrl-select" aria-label="Ir a vértice o arista" onchange="agySeleccionarElementoRapido(this.value)">
           <option value="">Inspeccionar Vértice / Arista...</option>
         </select>
+
+        <button class="agy-ctrl-btn" style="color:var(--color-saffron-spark);border-color:rgba(255,184,41,0.45);" onclick="agyAbrirModalConstruccionSubgrafo()">
+          📐 Cómo se Construyó este Grafo
+        </button>
 
         <button class="agy-ctrl-btn" onclick="agyMostrarComparadorEscenarios()">
           Escenarios FLP
@@ -2534,6 +2975,14 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     <iframe id="agy-folium-iframe" src="mapa_interactivo.html?folium_only=1" title="Mapa Geográfico Folium — Cadena de Frío Puerto Gaitán"></iframe>
   </section>
 </main>
+
+<!-- MODAL EXPANDIBLE (REACT BITS MODAL CARDS STYLE — SCALE WITH MORPHING) -->
+<div id="agy-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="agy-modal-title" onclick="if(event.target===this)agyCerrarModalDetalle()">
+  <div class="agy-modal-dialog">
+    <button class="agy-modal-close" onclick="agyCerrarModalDetalle()" aria-label="Cerrar ventana de detalle">&times;</button>
+    <div id="agy-modal-content"></div>
+  </div>
+</div>
 
 <script>
 const AGY_DATA = {json_payload};
@@ -2964,6 +3413,448 @@ function agyInicializarSlidesEditoriales() {{
 
   // 5. Gráficos de FLP y Tiempos Térmicos (Diapositiva 7)
   agyRenderizarGraficosSlide7("PG");
+
+  // 6. Simulador Térmico Crosshair (Slide 1) y Comparador Antes vs Después (Slide 8)
+  agyActualizarCrosshairTermico(2.20);
+  agyRenderizarComparadorInteractivo();
+  agyRenderizarComparadorAsociacion("P05");
+}}
+
+function agyCambiarPasoConstruccion(idx) {{
+  for (let i = 0; i < 4; i++) {{
+    document.getElementById(`agy-step-btn-${{i}}`)?.classList.toggle("active", i === idx);
+    document.getElementById(`agy-step-pane-${{i}}`)?.classList.toggle("active", i === idx);
+  }}
+}}
+
+function agyActualizarCrosshairTermico(horasVal) {{
+  const t = Math.max(0, Math.min(10, parseFloat(horasVal) || 0));
+  const lbl = document.getElementById("agy-sim-time-lbl");
+  if (lbl) lbl.textContent = `${{t.toFixed(2)}} h (${{Math.round(t * 60)}} min)`;
+
+  const prodTotal = 265.75;
+  const pctSinFrio = Math.min(100, t * 2.5);
+  const pctZonaD = Math.min(100, t * 3.75);
+  // Con F02 el pescado entra a 0 °C a lo sumo en 2.20 h (promedio 0.45 h) y luego decae a 0.25%/h
+  const tAntesFrio = Math.min(t, 0.85);
+  const tEnFrio = Math.max(0, t - tAntesFrio);
+  const pctConF02 = Math.min(100, tAntesFrio * 2.5 + tEnFrio * 0.25);
+
+  const kgPerdidosSinFrio = prodTotal * (pctSinFrio / 100);
+  const kgPerdidosConF02 = prodTotal * (pctConF02 / 100);
+  const copPerdidosSinFrio = kgPerdidosSinFrio * 12000;
+  const copAhorrados = (kgPerdidosSinFrio - kgPerdidosConF02) * 12000;
+  const violaFAO = t > 4.0;
+
+  const svgWrap = document.getElementById("agy-sim-svg-wrap");
+  if (svgWrap) {{
+    const W = 920;
+    const H = 200;
+    const padL = 48;
+    const padR = 24;
+    const padT = 18;
+    const padB = 30;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+    const xOf = (hr) => padL + (hr / 10) * plotW;
+    const yOf = (pct) => padT + plotH - (Math.min(45, pct) / 45) * plotH;
+
+    const ptsSin = [];
+    const ptsZonaD = [];
+    const ptsF02 = [];
+    for (let h = 0; h <= 10; h += 0.25) {{
+      ptsSin.push(`${{xOf(h).toFixed(1)}},${{yOf(h * 2.5).toFixed(1)}}`);
+      ptsZonaD.push(`${{xOf(h).toFixed(1)}},${{yOf(h * 3.75).toFixed(1)}}`);
+      const taf = Math.min(h, 0.85);
+      const tef = Math.max(0, h - taf);
+      ptsF02.push(`${{xOf(h).toFixed(1)}},${{yOf(taf * 2.5 + tef * 0.25).toFixed(1)}}`);
+    }}
+
+    const cx = xOf(t);
+    const xFAO = xOf(4.0);
+    const areaSin = `M ${{xOf(0)}},${{padT + plotH}} L ${{ptsSin.join(" L ")}} L ${{xOf(10)}},${{padT + plotH}} Z`;
+    const areaF02 = `M ${{xOf(0)}},${{padT + plotH}} L ${{ptsF02.join(" L ")}} L ${{xOf(10)}},${{padT + plotH}} Z`;
+
+    svgWrap.innerHTML = `
+      <svg viewBox="0 0 ${{W}} ${{H}}" style="width:100%;height:auto;display:block;background:#060608;border-radius:14px;border:1px solid var(--color-steel);">
+        <defs>
+          <linearGradient id="gradSinFrio" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ff6b2b" stop-opacity="0.34"/>
+            <stop offset="100%" stop-color="#ff6b2b" stop-opacity="0.02"/>
+          </linearGradient>
+          <linearGradient id="gradConF02" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#10b981" stop-opacity="0.32"/>
+            <stop offset="100%" stop-color="#10b981" stop-opacity="0.02"/>
+          </linearGradient>
+        </defs>
+        <!-- Zona Roja de Riesgo de Histamina (> 4.0 h FAO) -->
+        <rect x="${{xFAO}}" y="${{padT}}" width="${{xOf(10) - xFAO}}" height="${{plotH}}" fill="rgba(220,80,0,0.09)"/>
+        <line x1="${{xFAO}}" y1="${{padT}}" x2="${{xFAO}}" y2="${{padT + plotH}}" stroke="#ffb829" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="${{xFAO + 6}}" y="${{padT + 14}}" fill="#ffb829" font-family="var(--font-mono)" font-size="10.5" font-weight="700">LÍMITE FAO 4.0 h (240 min) → RIESGO DE HISTAMINA</text>
+
+        <!-- Áreas y Curvas -->
+        <path d="${{areaSin}}" fill="url(#gradSinFrio)"/>
+        <path d="${{areaF02}}" fill="url(#gradConF02)"/>
+        <polyline fill="none" stroke="#dc5000" stroke-width="1.8" stroke-dasharray="4 3" points="${{ptsZonaD.join(" ")}}"/>
+        <polyline fill="none" stroke="#ff6b2b" stroke-width="2.6" points="${{ptsSin.join(" ")}}"/>
+        <polyline fill="none" stroke="#10b981" stroke-width="2.8" points="${{ptsF02.join(" ")}}"/>
+
+        <!-- Crosshair Vertical Interactivo -->
+        <line x1="${{cx}}" y1="${{padT}}" x2="${{cx}}" y2="${{padT + plotH}}" stroke="#8052ff" stroke-width="2.2"/>
+        <circle cx="${{cx}}" cy="${{yOf(pctZonaD)}}" r="4.5" fill="#dc5000" stroke="#ffffff" stroke-width="1.5"/>
+        <circle cx="${{cx}}" cy="${{yOf(pctSinFrio)}}" r="5.5" fill="#ff6b2b" stroke="#ffffff" stroke-width="1.5"/>
+        <circle cx="${{cx}}" cy="${{yOf(pctConF02)}}" r="5.5" fill="#10b981" stroke="#ffffff" stroke-width="1.5"/>
+
+        <!-- Ejes -->
+        <text x="${{padL - 8}}" y="${{padT + 10}}" text-anchor="end" fill="#9a9a9a" font-family="var(--font-mono)" font-size="10">40%</text>
+        <text x="${{padL - 8}}" y="${{padT + plotH / 2}}" text-anchor="end" fill="#9a9a9a" font-family="var(--font-mono)" font-size="10">20%</text>
+        <text x="${{padL - 8}}" y="${{padT + plotH}}" text-anchor="end" fill="#9a9a9a" font-family="var(--font-mono)" font-size="10">0%</text>
+        <text x="${{xOf(0)}}" y="${{H - 8}}" fill="#9a9a9a" font-family="var(--font-mono)" font-size="10">0.0 h</text>
+        <text x="${{xOf(2.2)}}" y="${{H - 8}}" text-anchor="middle" fill="#10b981" font-family="var(--font-mono)" font-size="10">2.2 h (Máx P05)</text>
+        <text x="${{xOf(4.0)}}" y="${{H - 8}}" text-anchor="middle" fill="#ffb829" font-family="var(--font-mono)" font-size="10">4.0 h (FAO)</text>
+        <text x="${{xOf(9.48)}}" y="${{H - 8}}" text-anchor="end" fill="#ff6b2b" font-family="var(--font-mono)" font-size="10">9.48 h (Bogotá)</text>
+      </svg>
+    `;
+  }}
+
+  const cardsWrap = document.getElementById("agy-sim-readout-cards");
+  if (cardsWrap) {{
+    cardsWrap.innerHTML = `
+      <div class="agy-plinth-card obsidian">
+        <div class="agy-stat-num" style="font-size:28px;color:var(--color-ember-accent);">${{pctSinFrio.toFixed(1)}}% <span class="agy-stat-unit">(${{kgPerdidosSinFrio.toFixed(1)}} kg)</span></div>
+        <div class="agy-stat-title">Merma SIN Solución (30 °C)</div>
+        <div class="agy-stat-desc">En zona crítica D (×1.5) sube a <strong>${{pctZonaD.toFixed(1)}}%</strong>. Pérdida: $${{Math.round(copPerdidosSinFrio).toLocaleString()}} COP/día.</div>
+      </div>
+      <div class="agy-plinth-card obsidian">
+        <div class="agy-stat-num" style="font-size:28px;color:#10b981;">${{pctConF02.toFixed(1)}}% <span class="agy-stat-unit">(${{kgPerdidosConF02.toFixed(1)}} kg)</span></div>
+        <div class="agy-stat-title">Merma CON Solución (Centro F02 a 0 °C)</div>
+        <div class="agy-stat-desc">Abate a 0 °C y frena la degradación un 90% (vida útil 360 h).</div>
+      </div>
+      <div class="agy-plinth-card obsidian">
+        <div class="agy-stat-num" style="font-size:28px;color:var(--color-saffron-spark);">$${{Math.round(copAhorrados).toLocaleString()}} <span class="agy-stat-unit">COP/día</span></div>
+        <div class="agy-stat-title">Pescado Salvado en t = ${{t.toFixed(2)}} h</div>
+        <div class="agy-stat-desc">Equivale a <strong>${{(kgPerdidosSinFrio - kgPerdidosConF02).toFixed(1)}} kg/día</strong> rescatados de la descomposición.</div>
+      </div>
+      <div class="agy-plinth-card obsidian">
+        <div class="agy-stat-num" style="font-size:24px;color:${{violaFAO ? 'var(--color-ember-accent)' : '#10b981'}};">${{violaFAO ? 'HISTAMINA CRÍTICA' : 'INOCUO (FAO OK)'}}</div>
+        <div class="agy-stat-title">Estado Sanitario a las ${{t.toFixed(2)}} h</div>
+        <div class="agy-stat-desc">${{violaFAO ? 'Supera los 240 min sin frío: producto no apto para consumo humano.' : 'Dentro de la ventana sanitaria de 240 min de la FAO.'}}</div>
+      </div>
+    `;
+  }}
+}}
+
+function agyRenderizarComparadorInteractivo() {{
+  const filtro = document.getElementById("agy-comp-filter")?.value || "all";
+  const grid = document.getElementById("agy-comp-cards-grid");
+  if (!grid) return;
+
+  const items = [
+    {{
+      id: "merma",
+      titulo: "1. Pérdida Poscaptura en Ruta Nacional",
+      antesTxt: "36.1% sim. / hasta 40.0% campo (95.9 kg/día perdidos)",
+      despuesTxt: "1.3% local (6.3 kg) / 17.1% a Bogotá con F02",
+      pctAntes: 90,
+      pctDespues: 18,
+      delta: "−52.6% a −94.2% merma",
+      explicacion: "Al enfriar a 0 °C en F02 antes de salir por la Ruta 40, se rescatan más de 50 kg/día de pescado fresco."
+    }},
+    {{
+      id: "histamina",
+      titulo: "2. Exposición al Sol y Riesgo de Histamina (FAO ≤ 4.0 h)",
+      antesTxt: "9.48 h (569 min sin frío → 0% cumplimiento FAO)",
+      despuesTxt: "Máx. 2.20 h (132 min en P05 → 100% cumplimiento 7/7)",
+      pctAntes: 100,
+      pctDespues: 23,
+      delta: "−76.8% tiempo sin frío",
+      explicacion: "Dijkstra con poda sanitaria garantiza que las 7 asociaciones toquen frío con +108 a +235 min de margen."
+    }},
+    {{
+      id: "costo",
+      titulo: "3. Costo Mensual de Infraestructura Frigorífica (FLP)",
+      antesTxt: "$23,023,272 COP/mes (Abriendo 3 plantas F01+F02+F03)",
+      despuesTxt: "$13,023,272 COP/mes (Configuración óptima Solo F02)",
+      pctAntes: 100,
+      pctDespues: 56,
+      delta: "Ahorra $10.0M COP/mes (−43.4%)",
+      explicacion: "El optimizador FLP demuestra que F02 cubre el 100% de la cuenca usando el 5.3% de su capacidad (5,000 kg)."
+    }},
+    {{
+      id: "hielo",
+      titulo: "4. Suministro de Hielo 1:1 en Desembarcaderos",
+      antesTxt: "0:1 (Sin hielo en canoas; masa sin refrigerar 265.8 kg)",
+      despuesTxt: "1:1 FAO (265.8 kg hielo/día + despacho inverso desde F02)",
+      pctAntes: 8,
+      pctDespues: 100,
+      delta: "100% factibilidad capacidad_kg",
+      explicacion: "La masa bruta duplicada (531.5 kg/día) respeta el 100% de la capacidad de lanchas y camiones."
+    }},
+    {{
+      id: "veda",
+      titulo: "5. Producción Formal Durante Veda (Abril–Junio)",
+      antesTxt: "0.0 kg/día fluviales (100% parálisis extractiva por 3 meses)",
+      despuesTxt: "240.0 kg/día en Grafo Bitemporal G_veda (P_PISC1..3)",
+      pctAntes: 5,
+      pctDespues: 90,
+      delta: "90.3% continuidad productiva",
+      explicacion: "Conmuta orígenes a 3 granjas de piscicultura nativa con acceso terrestre a F02 en t_máx = 0.21 h."
+    }},
+    {{
+      id: "trazabilidad",
+      titulo: "6. Protección de Hábitats (H01/H02) y Trazabilidad ICA/INVIMA",
+      antesTxt: "Rutas sin control sobre humedales y 0% lotes auditados",
+      despuesTxt: "0 violaciones en H01/H02 + 7/7 lotes en DAG Kahn + Hash O(1)",
+      pctAntes: 10,
+      pctDespues: 100,
+      delta: "100% trazabilidad y protección H",
+      explicacion: "Cada lote (ECA-2026-P01..P07) registra su integral térmica °C·h en tiempo constante O(1)."
+    }}
+  ];
+
+  const visibles = filtro === "all" ? items : items.filter(x => x.id === filtro);
+  grid.innerHTML = visibles.map(it => `
+    <div class="agy-comp-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div class="agy-stat-title">${{it.titulo}}</div>
+        <span class="agy-delta-pill">${{it.delta}}</span>
+      </div>
+      <div class="agy-comp-dual-bar">
+        <div style="font-size:12px;color:var(--color-ember-accent);font-family:var(--font-mono);">ANTES (SIN SOLUCIÓN): ${{it.antesTxt}}</div>
+        <div class="agy-comp-track"><div class="agy-comp-fill-before" style="width:${{it.pctAntes}}%"></div></div>
+        <div style="font-size:12px;color:#10b981;font-family:var(--font-mono);margin-top:4px;">CON SOLUCIÓN G=(V,E): ${{it.despuesTxt}}</div>
+        <div class="agy-comp-track"><div class="agy-comp-fill-after" style="width:${{it.pctDespues}}%"></div></div>
+      </div>
+      <p style="font-size:13px;">${{it.explicacion}}</p>
+    </div>
+  `).join("");
+}}
+
+function agyRenderizarComparadorAsociacion(asocId) {{
+  const box = document.getElementById("agy-comp-asoc-detail");
+  if (!box) return;
+  const itBog = (AGY_DATA.itinerarios || []).find(x => x.origen_id === asocId) || (AGY_DATA.itinerarios || [])[0];
+  const ecaInoc = ((AGY_DATA.eca || {{}}).inocuidad_histamina || {{}}).asociaciones || [];
+  const inocRow = ecaInoc.find(x => x.origen_id === asocId) || {{ tiempo_sin_frio_h: 0.48, tiempo_sin_frio_min: 28.8, margen_seguridad_min: 211.2, riesgo_histamina: "CONTROLADO" }};
+  if (!itBog) return;
+
+  const tSinSolBog = (itBog.tiempo_total_h || 6.78);
+  const mermaSinSolPct = Math.min(40.0, tSinSolBog * 3.2);
+  const kgPerdSinSol = (itBog.kg_inicial * mermaSinSolPct / 100);
+
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+      <div>
+        <span class="agy-badge" style="color:var(--color-saffron-spark);margin-bottom:6px;">AUDITORÍA INDIVIDUAL ANTES VS. DESPUÉS · ${{itBog.origen_id}}</span>
+        <h3>${{itBog.origen_nombre}} (${{itBog.kg_inicial}} kg/día + ${{itBog.kg_inicial}} kg Hielo 1:1 = ${{(itBog.kg_inicial * 2).toFixed(1)}} kg brutos)</h3>
+      </div>
+      <button class="agy-pill-ghost" onclick="agySaltarAItinerario('${{itBog.origen_id}}')">Ver Ruta de ${{itBog.origen_id}} en el Grafo →</button>
+    </div>
+    <div class="agy-bento-grid-4" style="margin-top:12px;margin-bottom:0;">
+      <div class="agy-plinth-card obsidian">
+        <div class="agy-stat-title" style="color:var(--color-ember-accent);">Tiempo al Sol (Antes vs. Después)</div>
+        <div style="font-family:var(--font-mono);font-size:14px;margin-top:4px;">Antes: <strong style="color:var(--color-ember-accent);">${{tSinSolBog.toFixed(2)}} h (${{Math.round(tSinSolBog*60)}} min)</strong><br>Con F02: <strong style="color:#10b981;">${{inocRow.tiempo_sin_frio_h.toFixed(2)}} h (${{inocRow.tiempo_sin_frio_min}} min)</strong></div>
+      </div>
+      <div class="agy-plinth-card obsidian">
+        <div class="agy-stat-title" style="color:#10b981;">Margen contra Histamina (FAO 240 min)</div>
+        <div style="font-family:var(--font-mono);font-size:14px;margin-top:4px;">Antes: <strong style="color:var(--color-ember-accent);">VIOLA (+${{Math.round((tSinSolBog-4)*60)}} min)</strong><br>Con F02: <strong style="color:#10b981;">+${{inocRow.margen_seguridad_min}} min a favor (${{inocRow.riesgo_histamina}})</strong></div>
+      </div>
+      <div class="agy-plinth-card obsidian">
+        <div class="agy-stat-title" style="color:var(--color-saffron-spark);">Merma de Pescado en Ruta</div>
+        <div style="font-family:var(--font-mono);font-size:14px;margin-top:4px;">Sin frío: <strong style="color:var(--color-ember-accent);">${{mermaSinSolPct.toFixed(1)}}% (${{kgPerdSinSol.toFixed(1)}} kg)</strong><br>Con F02 local: <strong style="color:#10b981;">${{(inocRow.tiempo_sin_frio_h * 2.5).toFixed(1)}}% (${{(itBog.kg_inicial * inocRow.tiempo_sin_frio_h * 0.025).toFixed(1)}} kg)</strong></div>
+      </div>
+      <div class="agy-plinth-card obsidian">
+        <div class="agy-stat-title" style="color:var(--color-electric-iris);">Ruta Multimodal Certificada (DAG)</div>
+        <div style="font-family:var(--font-mono);font-size:12.5px;margin-top:4px;color:var(--color-warm-cream);">${{(itBog.paradas || []).join(" → ")}}</div>
+      </div>
+    </div>
+  `;
+}}
+
+const AGY_MODALES_INFO = {{
+  prob1: {{
+    tag: "PROBLEMA 1 · CINÉTICA TÉRMICA (LÍNEA BASE SIN SOLUCIÓN)",
+    titulo: "Degradación Enzimática y Pérdida Poscaptura a 30 °C (Hasta 40%)",
+    cuerpo: `
+      <p>En la cuenca de Puerto Gaitán, la temperatura ambiente promedio es de <strong>30 °C</strong>. Sin cadena de frío, el pescado recién capturado experimenta autólisis enzimática y deterioro a una tasa base de <strong>2.5% por cada hora</strong> (y <strong>3.75%/h</strong> al cruzar las zonas críticas descubiertas <code>D01</code> Río Iteviare y <code>D02</code> Cruce La Culebra).</p>
+      <div class="agy-prop-group" style="margin-top:14px;">
+        <h4><span>Cifras Reales en Línea Base</span><span>Sin Solución</span></h4>
+        <div class="agy-prop-row"><span class="agy-prop-key">Oferta diaria expuesta (7 asociaciones)</span><span class="agy-prop-val">265.75 kg/día (7,972.5 kg/mes)</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Vida útil a 30 °C vs. 0 °C (FAO)</span><span class="agy-prop-val">6.0 horas (30 °C) vs. 360.0 horas (0 °C)</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Merma hacia Bogotá sin frío</span><span class="agy-prop-val" style="color:var(--color-ember-accent);">Hasta 36.1% – 40.0% (95.9 kg/día perdidos)</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Pérdida económica directa por merma</span><span class="agy-prop-val" style="color:var(--color-ember-accent);">Hasta $1,151,000 COP/día ($12,000 COP/kg perdido)</span></div>
+      </div>
+    `
+  }},
+  prob2: {{
+    tag: "PROBLEMA 2 · INOCUIDAD Y RIESGO BIOLÓGICO (HISTAMINA)",
+    titulo: "Ruptura del Límite Sanitario FAO (4.0 h = 240 min) y Toxicidad por Histamina",
+    cuerpo: `
+      <p>La FAO y las normas sanitarias INVIMA establecen un máximo estricto de <strong>4.0 horas (240 minutos)</strong> entre la captura y la refrigeración a 0 °C. Pasado este umbral a 30 °C, las bacterias entéricas convierten el aminoácido histidina del músculo del pez en <strong>histamina</strong> (causante de intoxicación escombroide, que no se destruye al cocinar ni al congelar después).</p>
+      <div class="agy-prop-group" style="margin-top:14px;">
+        <h4><span>Tiempos Reales Sin Planta de Frío en Puerto Gaitán</span><span>Riesgo Crítico</span></h4>
+        <div class="agy-prop-row"><span class="agy-prop-key">Tiempo P05 (Puerto Trujillo) → Mercado Local</span><span class="agy-prop-val">2.70 h (162 min) + espera en muelle M02 (+15 min)</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Tiempo hacia Villavicencio / Bogotá sin F02</span><span class="agy-prop-val" style="color:var(--color-ember-accent);">6.78 h a 9.48 h (407 a 569 min &gt; 240 min FAO)</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Cumplimiento sanitario hacia Bogotá sin frío</span><span class="agy-prop-val" style="color:var(--color-ember-accent);">0.0% (0 de 7 asociaciones cumplen)</span></div>
+      </div>
+    `
+  }},
+  prob3: {{
+    tag: "PROBLEMA 3 · INFRAESTRUCTURA FLUVIAL Y DÉFICIT DE HIELO 1:1",
+    titulo: "Ausencia de Hielo 1:1 en Canoas y Espera al Sol en Muelles (+0.25 h)",
+    cuerpo: `
+      <p>Las Buenas Prácticas de Pesca (BPP) exigen aplicar <strong>1 kg de hielo en escarcha por cada 1 kg de pescado (proporción 1:1)</strong> en recipientes plásticos no porosos. En la línea base, las canoas navegan sin hielo y hacen transbordo en muelles rústicos (<code>M01</code> San Miguel, <code>M02</code> Manacacías Sur, <code>M03</code> Puerto Gaitán) donde la carga espera <strong>+0.25 h (+15 min)</strong> bajo radiación solar directa.</p>
+      <div class="agy-prop-group" style="margin-top:14px;">
+        <h4><span>Requerimiento Físico y Económico del Hielo 1:1</span><span>Datos Reales</span></h4>
+        <div class="agy-prop-row"><span class="agy-prop-key">Hielo diario requerido (1:1)</span><span class="agy-prop-val">265.75 kg hielo/día (Masa bruta total = 531.5 kg/día)</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Costo del insumo de hielo ($800 COP/kg)</span><span class="agy-prop-val">$212,600 COP/día ($6,378,000 COP/mes)</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Limitación de muelles M01 y M02</span><span class="agy-prop-val">Sin energía eléctrica trifásica ni agua potable para fabricar hielo in situ</span></div>
+      </div>
+    `
+  }},
+  prob4: {{
+    tag: "PROBLEMA 4 · COSTO DE INVERSIÓN Y LOCALIZACIÓN EMPÍRICA (FLP)",
+    titulo: "Sobrecosto de $10,000,000 COP/mes por Abrir Plantas Redundantes",
+    cuerpo: `
+      <p>Existen 3 ubicaciones candidatas para centros de refrigeración (<code>F01</code> Alto Neblinas, <code>F02</code> Puerto Gaitán urbano y <code>F03</code> Puerto López), cada una con capacidad de <strong>5,000 kg</strong> y un costo fijo operativo de <strong>$5,000,000 COP/mes</strong>. Sin un modelo matemático FLP, abrir los 3 centros simultáneamente eleva el costo mensual a <strong>$23,023,272 COP/mes ($104,444 COP/kg)</strong> frente a <strong>$13,023,272 COP/mes ($59,080 COP/kg)</strong> abriendo únicamente <code>F02</code>.</p>
+    `
+  }},
+  prob5: {{
+    tag: "PROBLEMA 5 · ÉPOCA DE VEDA BIOLÓGICA (ECA C05-01-2026-003)",
+    titulo: "Suspensión del 100% de la Captura Fluvial durante Abril – Junio",
+    cuerpo: `
+      <p>Durante los meses de <strong>abril a junio</strong> (veda reproductiva AUNAP), se prohíbe la pesca extractiva en los ríos Meta, Manacacías e Iteviare. Sin una red logística que conmute hacia <strong>piscicultura sostenible de especies nativas en tierra firme</strong> (<code>G_veda</code>: 3 granjas acuícolas que aportan 240.0 kg/día), las 7 asociaciones quedan con 0.0 kg/día de flujo formal y la infraestructura frigorífica queda inactiva.</p>
+    `
+  }},
+  prob6: {{
+    tag: "PROBLEMA 6 · HÁBITATS PROTEGIDOS, RESGUARDOS Y TRAZABILIDAD",
+    titulo: "Riesgo de Invasión en H01/H02 y 0% de Trazabilidad Digital ICA/INVIMA",
+    cuerpo: `
+      <p>La cuenca incluye áreas de restricción ambiental y territorial como el <strong>Humedal Río Manacacías (H01)</strong> y la <strong>Zona Reserva Indígena Corocito (H02)</strong> (pueblos Sikuani). Sin filtrado algorítmico (<code>evitar_restringidos=True</code>) ni estructuras de datos de registro por lote (DAG + Tabla Hash), las rutas cruzan zonas sensibles y carecen de certificación sanitaria ante el ICA y el INVIMA.</p>
+    `
+  }},
+  teo1: {{
+    tag: "TEORÍA 1 · GRAFOS DIRIGIDOS PONDERADOS Y TABLAS HASH O(1)",
+    titulo: "Por qué Lista de Adyacencia sobre Tablas Hash y no Matriz Densa",
+    cuerpo: `
+      <p><strong>1. ¿Qué es la teoría?</strong> Un grafo dirigido ponderado $G=(V,E,w)$ modela entidades como vértices $V$ y relaciones asimétricas con costo como aristas dirigidas $E \\subseteq V \\times V$. Una <strong>Tabla Hash</strong> mapea claves (<code>id_nodo</code>) a direcciones de memoria mediante una función de dispersión en tiempo constante <strong>O(1)</strong>.</p>
+      <p><strong>2. ¿Cómo lo implementa el programa?</strong> En <code>src/models/grafo_logistico.py</code>, <code>GrafoLogistico</code> utiliza dos diccionarios Hash nativos: <code>_nodos: Dict[str, Nodo]</code> y <code>_adyacencia: Dict[str, List[Arista]]</code>.</p>
+      <p><strong>3. Defensa ante el jurado (¿Por qué así y no con Matriz 25×25?):</strong> En nuestro grafo hay $25$ nodos ($25 \\times 24 = 600$ pares posibles) pero solo $41$ aristas reales (<strong>densidad del 6.8%</strong>), y en <code>RedFluvial</code> hay $12,413$ vértices (una matriz ocuparía $1.2\\text{{ GB}}$ de RAM con $99.98\\%$ de infinitos). Con Lista de Adyacencia Hash recorremos únicamente los vecinos reales en $O(\\text{{grado}}(u))$ y usamos menos de $50\\text{{ KB}}$.</p>
+    `
+  }},
+  teo2: {{
+    tag: "TEORÍA 2 · MONTÍCULO BINARIO (MIN-HEAP) Y PODA BRANCH & BOUND",
+    titulo: "Algoritmo de Dijkstra O((V+E) log V) y Poda Dura de Inocuidad FAO",
+    cuerpo: `
+      <p><strong>1. ¿Qué es la teoría?</strong> Un <strong>Montículo Binario (Min-Heap)</strong> es un árbol binario completo almacenado en un arreglo contiguo donde la clave de cada padre es menor o igual a la de sus hijos, permitiendo extraer el mínimo en $O(\\log V)$. Combinado con una estrategia <strong>Voraz (Greedy)</strong> y <strong>Ramificación y Poda (Branch &amp; Bound)</strong>, expande siempre el camino parcial más prometedor y descarta ramas inviables.</p>
+      <p><strong>2. ¿Cómo lo aplica el programa?</strong> En <code>src/algorithms/dijkstra.py</code>, <code>dijkstra()</code> halla la ruta óptima multicriterio y <code>dijkstra_con_cota_inocuidad()</code> lleva en la tupla del heap el tiempo acumulado sin frío: si al avanzar hacia un vecino $v$ el tiempo sin refrigeración supera <strong>4.0 h (240 min)</strong>, poda la rama de inmediato previniendo el riesgo de histamina.</p>
+    `
+  }},
+  teo3: {{
+    tag: "TEORÍA 3 · PROGRAMACIÓN DINÁMICA EN GRAFOS",
+    titulo: "Bellman-Ford O(V·E) y Floyd-Warshall O(V³)",
+    cuerpo: `
+      <p><strong>1. ¿Qué es la teoría?</strong> La <strong>Programación Dinámica</strong> resuelve problemas mediante el principio de optimalidad de Bellman: la solución óptima global se construye relajando inductivamente subproblemas de tamaño creciente.</p>
+      <p><strong>2. Bellman-Ford (<code>src/algorithms/bellman_ford.py</code>):</strong> Relaja las $41$ aristas durante $|V|-1 = 24$ iteraciones sucesivas y ejecuta una iteración $25$ para demostrar formalmente que <code>tiene_ciclo_negativo = False</code>, coincidiendo al 100% con los tiempos de Dijkstra.</p>
+      <p><strong>3. Floyd-Warshall (<code>src/algorithms/floyd_warshall.py</code>):</strong> Aplica la recurrencia triple $D^{{(k)}}_{{ij}} = \\min(D^{{(k-1)}}_{{ij}}, D^{{(k-1)}}_{{ik}} + D^{{(k-1)}}_{{kj}})$ probando cada nodo $k \\in V$ como puente intermedio (omitiendo $k \\in H$ cuando <code>evitar_restringidos=True</code>) para precalcular la matriz $25 \\times 25$ que alimenta al optimizador FLP en $O(1)$.</p>
+    `
+  }},
+  teo4: {{
+    tag: "TEORÍA 4 · BÚSQUEDA EN AMPLITUD (BFS) Y EN PROFUNDIDAD (DFS)",
+    titulo: "Exploración por Capas (Cola FIFO) y Backtracking Exhaustivo",
+    cuerpo: `
+      <p><strong>1. BFS con Cola FIFO (<code>collections.deque</code> en $O(V+E)$):</strong> Explora el grafo por capas concéntricas de distancia topológica. En el proyecto determina el camino con <strong>menor número de transbordos físicos</strong> desde cada asociación hasta <code>F02</code> (evitando manipulación excesiva del pescado).</p>
+      <p><strong>2. DFS con Retroceso / Backtracking:</strong> Explora profundamente cada rama marcando nodos en el camino actual y desmarcándolos al retroceder, enumerando todas las rutas simples posibles hacia el centro de frío para contar con rutas de contingencia ante derrumbes o cierres viales.</p>
+    `
+  }},
+  teo5: {{
+    tag: "TEORÍA 5 · GRAFOS ACÍCLICOS DIRIGIDOS (DAG) Y GRAFOS BITEMPORALES",
+    titulo: "Orden Topológico de Kahn O(V+E) y Conmutación G_pesca ↔ G_veda",
+    cuerpo: `
+      <p><strong>1. DAG y Algoritmo de Kahn (<code>src/optimization/eca_solutions.py</code>):</strong> Cada lote pesquero (<code>ECA-2026-P01..P07</code>) se modela en <code>LoteTrazabilidadDAG</code>. El algoritmo de Kahn calcula los grados de entrada, encola en una FIFO los eventos sin dependencias previas y verifica que el historial sanitario sea 100% acíclico e inmutable para auditoría ICA/INVIMA.</p>
+      <p><strong>2. Grafo Dependiente del Tiempo $G(t)$:</strong> Modela el cambio estacional entre pesca fluvial (julio–marzo) y veda (abril–junio), conmutando los nodos fuente hacia las 3 granjas de piscicultura nativa (<code>P_PISC1..3</code>).</p>
+    `
+  }},
+  teo6: {{
+    tag: "TEORÍA 6 · OPTIMIZACIÓN COMBINATORIA (FACILITY LOCATION PROBLEM)",
+    titulo: "Selección Voraz Constructiva (Greedy FLP) y Programación Entera (MILP)",
+    cuerpo: `
+      <p><strong>1. ¿Qué es la teoría?</strong> El <strong>Facility Location Problem (FLP)</strong> busca el subconjunto óptimo de instalaciones $F' \\subseteq F$ que minimice la suma de costos fijos de apertura $\\sum f_j y_j$ más los costos de transporte y merma $\\sum c_{{ij}} x_{{ij}}$, cumpliendo cobertura sanitaria ($t \\le 4.0\\text{{ h}}$) y capacidad ($5,000\\text{{ kg}}$).</p>
+      <p><strong>2. Defensa del resultado:</strong> Evaluando los 5 escenarios con <code>EvaluadorEscenarios</code>, se demuestra que abrir <strong>únicamente F02 (Puerto Gaitán)</strong> cubre al 100% de las asociaciones en $\\le 2.20\\text{{ h}}$ y ahorra <strong>$10,000,000 COP/mes</strong> frente a abrir las 3 plantas.</p>
+    `
+  }},
+  externos: {{
+    tag: "DELIMITACIÓN PROFESIONAL DE ALCANCE · SOFTWARE VS. DISCIPLINAS EXTERNAS",
+    titulo: "Por qué estos 5 Problemas No Pueden Resolverse Mediante Código por Desarrolladores",
+    cuerpo: `
+      <p>Un ingeniero de sistemas debe defender con rigor dónde termina la solución computacional y dónde inicia la responsabilidad de otras ciencias:</p>
+      <div class="agy-prop-group" style="margin-top:12px;">
+        <h4><span>Desglose Técnico de Límites No Computacionales</span><span>Justificación</span></h4>
+        <div class="agy-prop-row"><span class="agy-prop-key">1. Contaminación por Mercurio (Hg)</span><span class="agy-prop-val">Es una propiedad química atómica del tejido del pez; requiere digestión ácida y espectrometría en laboratorio (Grupo GRITOX), no un algoritmo.</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">2. Fechas biológicas de la veda</span><span class="agy-prop-val">El desove depende del pulso hidrológico del río Meta y hormonas reproductivas (Biología AUNAP/SUSA). El software recibe las fechas como parámetro y adapta la red.</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">3. Inspección sensorial de branquias y ojos</span><span class="agy-prop-val">Verificar en vivo el olor, mucosidad y color rojo de las agallas al descargar la canoa requiere inspección física veterinaria/bromatológica (INVIMA).</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">4. Sustitución de madera y obras en muelles</span><span class="agy-prop-val">Cambiar mesas de madera por acero inoxidable y construir techos/acueducto en M01–M03 requiere presupuesto físico e Ingeniería Civil (Alcaldía).</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">5. Gobernanza y consulta previa indígena</span><span class="agy-prop-val">El software bloquea el paso por H02 en el grafo, pero los acuerdos de co-manejo con los resguardos Sikuani son procesos jurídicos y comunitarios.</span></div>
+      </div>
+    `
+  }}
+}};
+
+function agyAbrirModalDetalle(key) {{
+  const info = AGY_MODALES_INFO[key];
+  const backdrop = document.getElementById("agy-modal-backdrop");
+  const content = document.getElementById("agy-modal-content");
+  if (!info || !backdrop || !content) return;
+  content.innerHTML = `
+    <span class="agy-badge" style="color:var(--color-saffron-spark);margin-bottom:10px;">${{info.tag}}</span>
+    <h2 id="agy-modal-title" style="margin-bottom:14px;">${{info.titulo}}</h2>
+    <div style="font-size:15px;line-height:1.65;color:var(--color-silver-mist);">${{info.cuerpo}}</div>
+  `;
+  backdrop.classList.add("open");
+}}
+
+function agyAbrirModalConstruccionSubgrafo() {{
+  const backdrop = document.getElementById("agy-modal-backdrop");
+  const content = document.getElementById("agy-modal-content");
+  if (!backdrop || !content) return;
+
+  let titulo = "Construcción y Defensa del Grafo Mixto Multimodal G=(V,E)";
+  let tag = "DIAPOSITIVA 5 · UNIÓN DEL GRAFO VIAL + GRAFO DE RÍOS";
+  let html = `
+    <p><strong>¿Cómo se unieron los dos grafos y por qué se decidió así?</strong></p>
+    <p>1. <strong>Creación de la estructura base:</strong> Primero se creó <code>GrafoLogistico</code> con listas de adyacencia Hash <code>O(1)</code> y se tipificaron los <strong>25 vértices en 7 roles reales (P, M, A, F, D, H, V)</strong>.<br>
+    2. <strong>Soldadura multimodal en Muelles (M) y Acopios (A):</strong> Las <strong>10 aristas fluviales</strong> (calculadas sobre los 12,413 vértices de <code>rios.shp</code>) desembocan en los nodos puente <code>M01, M02, M03</code> y <code>A01, A02, A03</code>, desde donde nacen las <strong>31 aristas terrestres</strong> (12 de acceso local + 19 carreteras OSRM).<br>
+    3. <strong>Analogía de ingeniería:</strong> Opera como una red de transmisión donde la frescura se atenúa a 2.5%/h en el río, sufre +0.25 h de latencia en los muelles convertidores (M), se multiplica ×1.5 en resistencias térmicas (D), evita cortafuegos ambientales (H) y se regenera a 0 °C en el repetidor frigorífico (F02).</p>
+  `;
+  if (agySlideActual === 2) {{
+    tag = "DIAPOSITIVA 3 · METODOLOGÍA DE CONSTRUCCIÓN DEL SUBGRAFO VIAL";
+    titulo = "Cómo se Construyó el Grafo Vial (19 Vértices · 31 Aristas Terrestres)";
+    html = `
+      <p><strong>Orden exacto de construcción en código:</strong></p>
+      <p>1.º Se filtraron los 19 vértices con conexión terrestre (Muelles <code>M</code>, Acopios <code>A</code>, Centros de Frío <code>F</code>, Zonas <code>D/H</code> y Mercados <code>V</code>).<br>
+      2.º Se cargaron de <code>aristas.csv</code> las <strong>31 conexiones viales</strong> separadas en dos categorías físicas: <strong>12 vías de <code>acceso_local</code></strong> (trochas veredales de baja velocidad que conectan los ríos con la carretera) y <strong>19 vías <code>terrestres</code></strong> (corredor pavimentado Ruta Nacional 40 hacia Puerto López, Villavicencio y Bogotá).<br>
+      3.º Con <code>route_geometry.py</code> se consultó el motor <strong>OSRM</strong> y se anclaron los extremos exactos con <code>_anclar_extremos()</code>, guardando las polilíneas reales en <code>rutas_cache.json</code> para ejecución 100% offline.</p>
+    `;
+  }} else if (agySlideActual === 3) {{
+    tag = "DIAPOSITIVA 4 · METODOLOGÍA DE CONSTRUCCIÓN DEL GRAFO DE RÍOS";
+    titulo = "Cómo se Construyó el Grafo Fluvial (12,413 Vértices IGAC → 10 Rutas)";
+    html = `
+      <p><strong>Orden exacto de construcción en <code>src/visualization/river_network.py</code>:</strong></p>
+      <p>1.º Se cargó el shapefile oficial <code>data/shapefiles/rios.shp</code> (IGAC) recortado a la cuenca de los ríos Meta, Manacacías e Iteviare.<br>
+      2.º Cada cauce se discretizó en <strong>12,413 vértices <code>(lon, lat)</code></strong> (redondeados a 5 decimales ≈ 1.1 m) y <strong>24,790 segmentos ponderados con distancia geodésica de Haversine</strong> en un grafo no dirigido (<code>RedFluvial</code>).<br>
+      3.º Se indexó el territorio en una <strong>Rejilla Espacial Hash de 447 celdas (0.05°×0.05°)</strong> para proyectar cada asociación pesquera (<code>P01..P07</code>) al cauce más cercano en $O(1)$ y trazar con Dijkstra propio las <strong>10 rutas fluviales reales</strong>.</p>
+    `;
+  }}
+  content.innerHTML = `
+    <span class="agy-badge" style="color:var(--color-saffron-spark);margin-bottom:10px;">${{tag}}</span>
+    <h2 id="agy-modal-title" style="margin-bottom:14px;">${{titulo}}</h2>
+    <div style="font-size:15px;line-height:1.65;color:var(--color-silver-mist);">${{html}}</div>
+  `;
+  backdrop.classList.add("open");
+}}
+
+function agyCerrarModalDetalle() {{
+  document.getElementById("agy-modal-backdrop")?.classList.remove("open");
 }}
 
 function agyActualizarSimuladorMulticriterio(edgeId) {{
@@ -3663,6 +4554,19 @@ function agyActualizarSelectorRapido() {{
     grpA.appendChild(o);
   }});
   sel.appendChild(grpA);
+
+  const ptsCampo = AGY_DATA.puntos_campo || [];
+  if (ptsCampo.length) {{
+    const grpC = document.createElement("optgroup");
+    grpC.label = `Puntos de Campo Conectados por Río (${{ptsCampo.length}})`;
+    ptsCampo.forEach(pt => {{
+      const o = document.createElement("option");
+      o.value = `C:${{pt.id}}`;
+      o.textContent = `${{pt.title || pt.id}} → ${{pt.destino_relevo_id || 'M03'}} (${{pt.distancia_tramo_rio_km || 0}} km río | ${{pt.condicion_cuesta_rio || 'Fluvial'}})`;
+      grpC.appendChild(o);
+    }});
+    sel.appendChild(grpC);
+  }}
 }}
 
 function agySeleccionarElementoRapido(val) {{
@@ -3676,6 +4580,9 @@ function agySeleccionarElementoRapido(val) {{
   }} else if (tipo === "E") {{
     const a = AGY_DATA.aristas.find(x => x.id === id);
     if (a) agyInspeccionarArista(a);
+  }} else if (tipo === "C") {{
+    const pt = (AGY_DATA.puntos_campo || []).find(x => x.id === id);
+    if (pt) agyInspeccionarPuntoCampo(pt);
   }}
 }}
 
@@ -3807,15 +4714,30 @@ function agyRenderizarEscenaCompleta(inmediato = true) {{
 
     if (showField) {{
       (AGY_DATA.puntos_campo || []).forEach(pt => {{
+        if (Array.isArray(pt.coords_latlon) && pt.coords_latlon.length >= 2) {{
+          const ptsRuta = pt.coords_latlon.map(c => {{
+            const pr = agyProyectarSIG(c[1], c[0], W, H);
+            return `${{pr.x.toFixed(1)}},${{pr.y.toFixed(1)}}`;
+          }}).join(" ");
+          const polyRuta = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+          polyRuta.setAttribute("points", ptsRuta);
+          polyRuta.setAttribute("fill", "none");
+          const esAguasAbajo = String(pt.condicion_cuesta_rio || "").includes("Aguas abajo");
+          polyRuta.setAttribute("stroke", esAguasAbajo ? "#00b4d8" : "#ffb829");
+          polyRuta.setAttribute("stroke-width", "0.85");
+          polyRuta.setAttribute("stroke-dasharray", "3 2");
+          polyRuta.setAttribute("stroke-opacity", "0.78");
+          layerField.appendChild(polyRuta);
+        }}
         const p = agyProyectarSIG(pt.longitud, pt.latitud, W, H);
         const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         dot.setAttribute("cx", p.x.toFixed(1));
         dot.setAttribute("cy", p.y.toFixed(1));
-        dot.setAttribute("r", "1.9");
+        dot.setAttribute("r", "2.1");
         dot.setAttribute("fill", AGY_COLORES_NODO[pt.categoria] || "#9a9a9a");
-        dot.setAttribute("fill-opacity", "0.82");
+        dot.setAttribute("fill-opacity", "0.92");
         dot.setAttribute("stroke", "#000000");
-        dot.setAttribute("stroke-width", "0.4");
+        dot.setAttribute("stroke-width", "0.45");
         dot.style.cursor = "pointer";
         dot.addEventListener("click", (ev) => {{
           ev.stopPropagation();
@@ -4189,10 +5111,39 @@ function agyMostrarResumenSubgrafo() {{
 
   const flp = AGY_DATA.flp || {{}};
 
-  document.getElementById("agy-insp-body").innerHTML = `
+  let guiaConstruccion = `
     <div class="agy-effect-box">
-      <strong>Exploración de Constelación G=(V,E):</strong> Haz clic sobre cualquier vértice o arista en el lienzo negro para inspeccionar sus atributos reales, grados topológicos y desglose multicriterio.
+      <strong>Unión en Grafo Mixto Multimodal (25 V · 41 E):</strong><br>
+      1.º Se creó <code>GrafoLogistico</code> (Lista de Adyacencia Hash O(1)).<br>
+      2.º Se tipificaron los 25 vértices (<code>P, M, A, F, D, H, V</code>).<br>
+      3.º Se soldaron el Grafo Fluvial (10 aristas) y el Grafo Vial (31 aristas) usando los Muelles (<code>M</code>) y Acopios (<code>A</code>) como nodos puente.<br>
+      <button class="agy-modal-trigger" onclick="agyAbrirModalConstruccionSubgrafo()">+ Ver Analogía y Defensa Completa</button>
     </div>
+  `;
+  if (agySlideActual === 2) {{
+    guiaConstruccion = `
+      <div class="agy-effect-box">
+        <strong>Construcción del Subgrafo Vial (19 V · 31 E):</strong><br>
+        1.º Se cargaron los nodos terrestres (<code>M, A, F, D, H, V</code>).<br>
+        2.º Se clasificaron 12 vías de <code>acceso_local</code> (trochas) y 19 vías <code>terrestres</code> (Ruta Nacional 40).<br>
+        3.º Se trazó la geometría real con <strong>OSRM</strong> persistida en <code>rutas_cache.json</code>.<br>
+        <button class="agy-modal-trigger" onclick="agyAbrirModalConstruccionSubgrafo()">+ Por qué OSRM y Cómo se Construyó</button>
+      </div>
+    `;
+  }} else if (agySlideActual === 3) {{
+    guiaConstruccion = `
+      <div class="agy-effect-box">
+        <strong>Construcción del Grafo de Ríos (rios.shp → 10 Rutas):</strong><br>
+        1.º Se discretizó <code>rios.shp</code> (IGAC) en <strong>12,413 vértices</strong> y <strong>24,790 segmentos Haversine</strong>.<br>
+        2.º Se indexó en una <strong>Rejilla Hash de 447 celdas</strong> (0.05°×0.05°) para proyectar nodos <code>P</code> al cauce en O(1).<br>
+        3.º Un Dijkstra fluvial propio trazó las 10 rutas navegables reales.<br>
+        <button class="agy-modal-trigger" onclick="agyAbrirModalConstruccionSubgrafo()">+ Por qué Doble Grafo y Defensa</button>
+      </div>
+    `;
+  }}
+
+  document.getElementById("agy-insp-body").innerHTML = `
+    ${{guiaConstruccion}}
 
     <div class="agy-prop-group">
       <h4><span>Parámetros del Subgrafo Activo</span><span>G=(V,E)</span></h4>
@@ -4450,24 +5401,46 @@ function agyInspeccionarArista(a) {{
 
 function agyInspeccionarPuntoCampo(pt) {{
   agySeleccion = {{ tipo: "campo", id: pt.id }};
-  document.getElementById("agy-insp-title").textContent = `Punto de Campo ${{pt.id}}`;
+  document.getElementById("agy-insp-title").textContent = `${{pt.title || pt.id}}`;
   const badge = document.getElementById("agy-insp-badge");
-  badge.textContent = pt.categoria_texto;
+  badge.textContent = `${{pt.tipo || pt.categoria}} · ${{pt.cota_origen_msnm || 150}} m s.n.m.`;
   badge.style.color = AGY_COLORES_NODO[pt.categoria] || "#2997ff";
 
   document.getElementById("agy-insp-body").innerHTML = `
     <div class="agy-effect-box">
-      <strong>Registro de Levantamiento Georreferenciado (puntos_campo.geojson)</strong><br>
-      Punto verificado en terreno dentro del área de influencia hidrográfica del Meta.
+      <strong>🚤 Conexión por Red Fluvial Real (rios.shp — Lancha 40 HP):</strong><br>
+      Ruta en lancha: <strong>${{pt.id}} ──río──► ${{pt.destino_relevo_id || 'M03'}} ──► M03 (Puerto Gaitán)</strong>.<br>
+      Condición hidráulica: <strong style="color:var(--color-saffron-spark);">${{pt.condicion_cuesta_rio || 'Fluvial'}}</strong>.
     </div>
+
     <div class="agy-prop-group">
-      <h4><span>Atributos GeoJSON</span><span>Feature</span></h4>
-      <div class="agy-prop-row"><span class="agy-prop-key">id</span><span class="agy-prop-val">${{pt.id}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">tipo</span><span class="agy-prop-val">${{pt.tipo}} (${{pt.categoria}})</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">latitud_decimal</span><span class="agy-prop-val">${{pt.latitud.toFixed(6)}}°N</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">longitud_decimal</span><span class="agy-prop-val">${{pt.longitud.toFixed(6)}}°W</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">lat_dms</span><span class="agy-prop-val">${{pt.lat_dms}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">lon_dms</span><span class="agy-prop-val">${{pt.lon_dms}}</span></div>
+      <h4><span>1. Recorrido por Red Fluvial (rios.shp)</span><span>Geometría Real</span></h4>
+      <div class="agy-prop-row"><span class="agy-prop-key">Punto de origen</span><span class="agy-prop-val">${{pt.title || pt.id}} (${{pt.tipo}})</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Coordenadas DMS</span><span class="agy-prop-val">${{pt.lat_dms}}, ${{pt.lon_dms}}</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Siguiente relevo fluvial</span><span class="agy-prop-val">${{pt.destino_relevo_nombre || 'M03 Puerto Gaitán'}}</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Distancia tramo por río</span><span class="agy-prop-val">${{pt.distancia_tramo_rio_km}} km (recta: ${{pt.distancia_recta_km}} km)</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Sinuosidad de meandros</span><span class="agy-prop-val">${{pt.indice_sinuosidad}}× (enlace al cauce: ${{pt.distancia_al_cauce_km}} km)</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Distancia fluvial total a M03</span><span class="agy-prop-val" style="color:var(--color-saffron-spark);">${{pt.distancia_total_a_m03_km}} km</span></div>
+    </div>
+
+    <div class="agy-prop-group">
+      <h4><span>2. Cuesta del Río, Pendiente y Lancha</span><span>Hidrología Real</span></h4>
+      <div class="agy-prop-row"><span class="agy-prop-key">Régimen de cuesta</span><span class="agy-prop-val">${{pt.condicion_cuesta_rio}}</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Cota origen → M03</span><span class="agy-prop-val">${{pt.cota_origen_msnm}} → ${{pt.cota_m03_msnm}} m s.n.m. (${{pt.desnivel_a_m03_m >= 0 ? '+' : ''}}${{pt.desnivel_a_m03_m}} m)</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Pendiente hidráulica</span><span class="agy-prop-val">${{pt.pendiente_m_km}} m/km</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Velocidad corriente río</span><span class="agy-prop-val">${{pt.velocidad_corriente_kmh >= 0 ? '+' : ''}}${{pt.velocidad_corriente_kmh}} km/h</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Velocidad lancha (ida / retorno)</span><span class="agy-prop-val">${{pt.velocidad_lancha_ida_kmh}} km/h / ${{pt.velocidad_lancha_retorno_kmh}} km/h</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Esfuerzo motor fuera de borda</span><span class="agy-prop-val">${{pt.esfuerzo_motor}}</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Tiempo tramo / Total a M03</span><span class="agy-prop-val">${{pt.tiempo_tramo_h}} h / ${{pt.tiempo_total_a_m03_h}} h (${{pt.tiempo_total_a_m03_min}} min)</span></div>
+    </div>
+
+    <div class="agy-prop-group">
+      <h4><span>3. Frío, Combustible e Inocuidad FAO</span><span>Lote ${{pt.lote_referencia_kg}} kg</span></h4>
+      <div class="agy-prop-row"><span class="agy-prop-key">Gasolina lancha hasta M03</span><span class="agy-prop-val">${{pt.galones_gasolina}} gal ($${{(pt.costo_combustible_cop || 0).toLocaleString()}} COP)</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Hielo 1:1 requerido a bordo</span><span class="agy-prop-val">${{pt.hielo_requerido_1a1_kg}} kg hielo en escarcha</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Pérdida a 30 °C (sin hielo)</span><span class="agy-prop-val" style="color:var(--color-ember-accent);">${{pt.perdida_sin_hielo_pct}}%</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Pérdida a 0 °C (con hielo 1:1)</span><span class="agy-prop-val" style="color:#10b981;">${{pt.perdida_con_hielo_1a1_pct}}%</span></div>
+      <div class="agy-prop-row"><span class="agy-prop-key">Diagnóstico FAO (4.0 h)</span><span class="agy-prop-val" style="color:${{pt.requiere_hielo_abordo ? 'var(--color-ember-accent)' : '#10b981'}};">${{pt.estado_fao_sin_hielo}}</span></div>
     </div>
   `;
 }}
@@ -4584,6 +5557,7 @@ function agyInspeccionarItinerario(it) {{
     }} else if (ev.key === "r" || ev.key === "R") {{
       agyResetVista();
     }} else if (ev.key === "Escape") {{
+      agyCerrarModalDetalle();
       agyItinerarioActivo = "";
       const selIt = document.getElementById("agy-itin-select");
       if (selIt) selIt.value = "";
