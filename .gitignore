@@ -38,16 +38,29 @@ htmlcov/
 # Jupyter
 .ipynb_checkpoints/
 
-# Datos generados
+# Herramientas internas de agentes IA y borradores locales (se mantienen en local, no en GitHub)
+.agents/
+.claude/
+.playwright-cli/
+.playwright-mcp/
+skills-lock.json
+AGENTS.md
+DESIGN.md
+PRODUCT.md
+PROJECT_MAP.md
+scripts/generar_repo_map.py
+tests/test_repo_map.py
+scratch/
+
+# Datos generados (solo se suben las salidas esenciales del proyecto)
 data/output/*
 !data/output/.gitkeep
 !data/output/presentacion_red_logistica.html
 !data/output/mapa_interactivo.html
 !data/output/rutas_cache.json
+!data/output/grafo_logistico.png
+!data/output/Informe_Final_Cadena_Frio_Puerto_Gaitan.docx
+!data/output/Informe_Final_Cadena_Frio_Puerto_Gaitan.pdf
 
 # Logs
 *.log
-
-# Playwright CLI output (may contain credentials)
-.playwright-cli/
-.playwright-mcp/

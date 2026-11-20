@@ -1270,28 +1270,29 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     border: 1px solid rgba(255, 184, 41, 0.35);
     border-radius: 16px;
     padding: 12px 22px;
-    font-family: var(--font-serif);
+    font-family: 'Newsreader', 'Cambria Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
     font-size: 21px;
     line-height: 1.35;
-    color: var(--color-porcelain);
+    color: var(--color-bone-white);
     display: inline-block;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.015em;
     white-space: nowrap;
   }}
   .agy-math-eq var {{
-    font-family: var(--font-serif);
+    font-family: 'Newsreader', 'Cambria Math', 'Times New Roman', Georgia, serif;
     font-style: italic;
-    font-weight: 500;
-    color: var(--color-warm-cream);
+    font-weight: 600;
+    color: var(--color-bone-white);
   }}
   .agy-math-eq sub {{
-    font-family: var(--font-sans);
+    font-family: 'Newsreader', 'Cambria Math', 'Times New Roman', Georgia, serif;
     font-style: normal;
-    font-size: 12px;
+    font-size: 0.72em;
     font-weight: 600;
-    color: var(--color-saffron-spark);
+    color: var(--color-silver-mist);
+    vertical-align: -0.22em;
     margin-left: 1px;
-    margin-right: 4px;
+    margin-right: 3px;
   }}
   .agy-math-params {{
     display: grid;
@@ -2086,32 +2087,555 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     transform: rotate(90deg);
   }}
 
-  /* Simulador de Área Térmica con Time Crosshair Arrastrable (Hero 57 Style) */
+  /* ═══════════════════════════════════════════════════════════════
+     SIMULADOR TÉRMICO v2 — Estilo Highcharts (Spline + Plot Bands)
+     ═══════════════════════════════════════════════════════════════ */
   .agy-crosshair-panel {{
-    background: linear-gradient(180deg, #121318 0%, #070709 100%);
-    border: 1px solid var(--color-steel);
-    border-radius: 24px;
-    padding: 24px 28px;
+    background: linear-gradient(180deg, #0d0e12 0%, #060608 100%);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 20px;
+    padding: 28px 32px 24px;
     margin-bottom: 28px;
+    position: relative;
   }}
+
+  /* Encabezado del simulador */
+  .agy-chart-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+  }}
+  .agy-chart-header h2 {{
+    font-family: var(--font-sans);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-porcelain);
+    margin: 0;
+    line-height: 1.35;
+  }}
+  .agy-chart-header p {{
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--color-ash);
+    margin: 4px 0 0;
+    line-height: 1.5;
+    max-width: 620px;
+  }}
+
+  /* Leyenda interactiva tipo Highcharts */
+  .agy-chart-legend {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin: 0 0 14px;
+  }}
+  .agy-legend-item {{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-silver-mist);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    cursor: pointer;
+    transition: opacity 160ms var(--ease-out), background 160ms var(--ease-out);
+    user-select: none;
+  }}
+  .agy-legend-item:hover {{
+    background: rgba(255, 255, 255, 0.07);
+  }}
+  .agy-legend-item.disabled {{
+    opacity: 0.35;
+  }}
+  .agy-legend-swatch {{
+    width: 14px;
+    height: 3px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }}
+
+  /* Contenedor del canvas del gráfico */
+  .agy-chart-canvas-wrap {{
+    position: relative;
+    width: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #08080b;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }}
+  .agy-chart-canvas-wrap canvas {{
+    display: block;
+    width: 100%;
+    cursor: crosshair;
+  }}
+
+  /* Tooltip flotante tipo Highcharts */
+  .agy-chart-tooltip {{
+    position: absolute;
+    pointer-events: none;
+    z-index: 100;
+    background: rgba(10, 10, 14, 0.94);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-porcelain);
+    min-width: 200px;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  }}
+  .agy-chart-tooltip.visible {{
+    opacity: 1;
+    transform: translateY(0);
+  }}
+  .agy-chart-tooltip .tt-title {{
+    font-weight: 700;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--color-bone-white);
+    margin-bottom: 6px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }}
+  .agy-chart-tooltip .tt-row {{
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 2px 0;
+    font-variant-numeric: tabular-nums;
+  }}
+  .agy-chart-tooltip .tt-dot {{
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1.5px solid rgba(255, 255, 255, 0.5);
+  }}
+  .agy-chart-tooltip .tt-val {{
+    margin-left: auto;
+    font-weight: 600;
+    font-family: var(--font-mono);
+  }}
+
+  /* Controles del slider y presets */
   .agy-crosshair-controls {{
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin: 16px 0;
+    gap: 14px;
+    margin: 16px 0 0;
     padding: 14px 18px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--color-steel);
-    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 14px;
   }}
   .agy-time-slider {{
     flex: 1;
-    min-width: 220px;
-    accent-color: var(--color-electric-iris);
-    cursor: grab;
+    min-width: 200px;
+    -webkit-appearance: none;
+    appearance: none;
     height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    outline: none;
+    cursor: grab;
+  }}
+  .agy-time-slider::-webkit-slider-thumb {{
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--color-electric-iris);
+    border: 2px solid var(--color-bone-white);
+    cursor: grab;
+    box-shadow: 0 0 10px rgba(128, 82, 255, 0.5);
+    transition: transform 120ms var(--ease-out), box-shadow 120ms var(--ease-out);
+  }}
+  .agy-time-slider::-webkit-slider-thumb:hover {{
+    transform: scale(1.15);
+    box-shadow: 0 0 16px rgba(128, 82, 255, 0.7);
+  }}
+  .agy-time-slider:active {{
+    cursor: grabbing;
+  }}
+  .agy-preset-btns {{
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }}
+  .agy-preset-btn {{
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--color-silver-mist);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 140ms var(--ease-out);
+    white-space: nowrap;
+  }}
+  .agy-preset-btn:hover {{
+    background: rgba(128, 82, 255, 0.15);
+    border-color: rgba(128, 82, 255, 0.4);
+    color: var(--color-bone-white);
+  }}
+  .agy-preset-btn:active {{
+    transform: scale(0.96);
+  }}
+  .agy-preset-btn.active-preset {{
+    background: var(--color-electric-iris);
+    color: var(--color-bone-white);
+    border-color: rgba(255, 255, 255, 0.2);
+  }}
+
+  /* Tarjetas de readout mejoradas */
+  .agy-sim-readout-row {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+  }}
+  .agy-readout-card {{
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 14px;
+    padding: 16px 18px;
+    transition: border-color 200ms var(--ease-out);
+  }}
+  .agy-readout-card:hover {{
+    border-color: rgba(255, 255, 255, 0.14);
+  }}
+  .agy-readout-val {{
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.1;
+  }}
+  .agy-readout-label {{
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-ash);
+    margin-top: 6px;
+    letter-spacing: 0.03em;
+  }}
+  .agy-readout-sub {{
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--color-slate);
+    margin-top: 4px;
+    line-height: 1.4;
+  }}
+
+  /* Fórmula interactiva grande y panel de desglose matemático */
+  .agy-therm-formula-btn {{
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 5px;
+    padding: 12px 20px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(128, 82, 255, 0.14) 0%, rgba(255, 184, 41, 0.08) 100%);
+    border: 1px solid rgba(128, 82, 255, 0.45);
+    color: var(--color-bone-white);
+    cursor: pointer;
+    user-select: none;
+    transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), border-color 180ms var(--ease-out), background 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  }}
+  .agy-therm-formula-btn:hover {{
+    transform: translateY(-2px);
+    border-color: var(--color-saffron-spark);
+    background: linear-gradient(135deg, rgba(128, 82, 255, 0.24) 0%, rgba(255, 184, 41, 0.14) 100%);
+    box-shadow: 0 8px 28px rgba(128, 82, 255, 0.25);
+  }}
+  .agy-therm-formula-btn:active {{
+    transform: scale(0.97);
+  }}
+  .agy-therm-formula-btn.is-open {{
+    border-color: var(--color-saffron-spark);
+    background: linear-gradient(135deg, rgba(128, 82, 255, 0.28) 0%, rgba(255, 184, 41, 0.18) 100%);
+  }}
+  .agy-therm-formula-main {{
+    font-family: var(--font-serif);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-bone-white);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 1.2;
+  }}
+  .agy-therm-formula-main var {{
+    font-style: italic;
+    color: var(--color-saffron-spark);
+    padding: 2px 5px;
+    border-radius: 6px;
+    transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
+  }}
+  .agy-therm-formula-btn:hover .agy-therm-formula-main var {{
+    background: rgba(255, 184, 41, 0.14);
+  }}
+  .agy-therm-formula-hint {{
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--color-silver-mist);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }}
+  .agy-therm-formula-hint .hint-dot {{
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-saffron-spark);
+    box-shadow: 0 0 8px var(--color-saffron-spark);
+  }}
+
+  /* Panel desplegable interactivo de la ecuación */
+  .agy-formula-drawer {{
+    display: none;
+    margin: 0 0 18px;
+    padding: 20px 22px;
+    border-radius: 16px;
+    background: rgba(14, 15, 22, 0.92);
+    border: 1px solid rgba(128, 82, 255, 0.35);
+    animation: agySlideEnter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }}
+  .agy-formula-drawer.open {{
+    display: block;
+  }}
+  .agy-formula-terms-bar {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }}
+  .agy-term-pill {{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--color-porcelain);
+    font-family: var(--font-sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 150ms var(--ease-out);
+  }}
+  .agy-term-pill:hover {{
+    background: rgba(128, 82, 255, 0.16);
+    border-color: rgba(128, 82, 255, 0.45);
+  }}
+  .agy-term-pill.active {{
+    background: var(--color-electric-iris);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: var(--color-bone-white);
+  }}
+  .agy-term-pill code {{
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--color-saffron-spark);
+    background: rgba(0, 0, 0, 0.35);
+    padding: 2px 7px;
+    border-radius: 6px;
+  }}
+  .agy-term-pill.active code {{
+    color: #ffffff;
+  }}
+  .agy-formula-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+  }}
+  .agy-formula-card {{
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+    padding: 16px 18px;
+    transition: border-color 180ms var(--ease-out), background 180ms var(--ease-out), transform 180ms var(--ease-out);
+    cursor: pointer;
+  }}
+  .agy-formula-card:hover {{
+    border-color: rgba(255, 184, 41, 0.4);
+    background: rgba(255, 255, 255, 0.04);
+  }}
+  .agy-formula-card.highlighted {{
+    border-color: var(--color-saffron-spark);
+    background: linear-gradient(180deg, rgba(128, 82, 255, 0.12) 0%, rgba(255, 184, 41, 0.05) 100%);
+    transform: translateY(-2px);
+  }}
+  .agy-fcard-head {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }}
+  .agy-fcard-sym {{
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--color-saffron-spark);
+    background: rgba(255, 184, 41, 0.1);
+    border: 1px solid rgba(255, 184, 41, 0.28);
+    padding: 3px 11px;
+    border-radius: 8px;
+  }}
+  .agy-fcard-title {{
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--color-bone-white);
+    flex: 1;
+  }}
+  .agy-fcard-body {{
+    font-family: var(--font-sans);
+    font-size: 12.5px;
+    color: var(--color-silver-mist);
+    line-height: 1.55;
+  }}
+  .agy-fcard-body ul {{
+    margin: 6px 0 0;
+    padding-left: 16px;
+  }}
+  .agy-fcard-body li {{
+    margin-bottom: 4px;
+  }}
+  .agy-fcard-mathbox {{
+    margin-top: 10px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: rgba(8, 8, 12, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: var(--font-serif);
+    font-size: 16.5px;
+    color: var(--color-porcelain);
+    line-height: 1.75;
+    letter-spacing: 0.015em;
+  }}
+
+  /* ═══════════════════════════════════════════════════════════════
+     TIPOGRAFÍA MATEMÁTICA EDITORIAL (KaTeX / LaTeX Display Style)
+     Para todas las fórmulas, fracciones, sumatorias y subíndices
+     ═══════════════════════════════════════════════════════════════ */
+  .agy-tex {{
+    font-family: 'Newsreader', 'Cambria Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
+    font-size: 1.08em;
+    font-weight: 500;
+    color: var(--color-bone-white);
+    letter-spacing: 0.015em;
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    vertical-align: middle;
+  }}
+  .agy-tex-block {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 10px 0;
+    padding: 14px 20px;
+    border-radius: 12px;
+    background: rgba(10, 10, 15, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    font-family: 'Newsreader', 'Cambria Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
+    font-size: 18px;
+    color: var(--color-bone-white);
+    overflow-x: auto;
+  }}
+  .agy-tex var, .agy-tex-block var, .agy-fcard-mathbox var {{
+    font-family: 'Newsreader', 'Cambria Math', 'Times New Roman', Georgia, serif;
+    font-style: italic;
+    font-weight: 600;
+    color: var(--color-bone-white);
+  }}
+  .agy-tex sub, .agy-tex-block sub, .agy-fcard-mathbox sub,
+  .agy-therm-formula-main sub, .agy-fcard-sym sub, .agy-term-pill code sub {{
+    font-family: 'Newsreader', 'Cambria Math', 'Times New Roman', Georgia, serif;
+    font-style: normal;
+    font-weight: 600;
+    font-size: 0.72em;
+    color: var(--color-silver-mist);
+    vertical-align: -0.22em;
+    margin-left: 1px;
+  }}
+  .agy-tex sub i, .agy-tex-block sub i, .agy-fcard-mathbox sub i,
+  .agy-therm-formula-main sub i, .agy-fcard-sym sub i {{
+    font-style: italic;
+  }}
+  .agy-tex sup, .agy-tex-block sup, .agy-fcard-mathbox sup {{
+    font-family: 'Newsreader', 'Cambria Math', 'Times New Roman', Georgia, serif;
+    font-style: normal;
+    font-weight: 600;
+    font-size: 0.72em;
+    vertical-align: 0.45em;
+    margin-left: 1px;
+  }}
+  .agy-sum {{
+    font-family: 'Cambria Math', 'Times New Roman', serif;
+    font-style: normal;
+    font-size: 1.45em;
+    font-weight: 400;
+    line-height: 1;
+    vertical-align: -0.08em;
+    margin: 0 2px;
+    color: var(--color-bone-white);
+  }}
+  .agy-frac {{
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 5px;
+    font-size: 0.92em;
+    line-height: 1.15;
+  }}
+  .agy-frac-num {{
+    border-bottom: 1.3px solid rgba(255, 255, 255, 0.75);
+    padding: 0 6px 3px;
+    text-align: center;
+    white-space: nowrap;
+  }}
+  .agy-frac-den {{
+    padding: 3px 6px 0;
+    text-align: center;
+    white-space: nowrap;
+  }}
+  .agy-op {{
+    font-style: normal;
+    color: var(--color-silver-mist);
+    margin: 0 3px;
   }}
   .agy-step-tabs {{
     display: flex;
@@ -2275,7 +2799,7 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
           </p>
           <div class="agy-meta-authors">
             <div><strong>UNIVERSIDAD DE LOS LLANOS</strong> <span>· Fac. Ciencias Básicas e Ingeniería · Ing. en Sistemas</span></div>
-            <div><strong>Autores:</strong> Yair Armando Ospino Herrera (160005565) · Harold Esteban Padilla Díaz (160005567)</div>
+            <div><strong>Autores:</strong> Yair Armando Ospino Herrera (160005565) · Harold Esteban Padilla Díaz (160005567) · Alejandro Ávila Ortiz (160005507) · Samuel Esteban Gómez Buitrago (160005533)</div>
             <div><strong>Curso:</strong> Estructuras de Datos (603301) · Corte 3: Grafos · Semestre 2026-II · Villavicencio, Meta</div>
           </div>
           <div class="agy-cta-row">
@@ -2301,27 +2825,31 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
         </div>
       </div>
 
-      <!-- 4 Indicadores Maestros del Problema Base (Sin Solución) -->
+      <!-- 4 Indicadores Maestros del Problema Base (Sin Solución — Interactivos al Clic) -->
       <div class="agy-bento-grid-4">
-        <div class="agy-plinth-card highlight-saffron">
+        <div class="agy-plinth-card highlight-saffron" role="button" tabindex="0" style="cursor:pointer;" onclick="agyAbrirModalDetalle('kpi_prod')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalDetalle('kpi_prod');}}" title="Haz clic para ver la tabla completa de producción por asociación y fuentes AUNAP/ECA">
           <div class="agy-stat-num">265.8<span class="agy-stat-unit">kg/día</span></div>
           <div class="agy-stat-title">Producción Diaria Expuesta (7 Asociaciones)</div>
-          <div class="agy-stat-desc">ASOPESGA (45 kg), Atarraya Verde (38 kg), Asovida (52 kg), Asopespor (31 kg), Pto. Trujillo (28.75 kg), Desembarcadero (42 kg) y Soplaviento (29 kg).</div>
+          <div class="agy-stat-desc">ASOPESGA (65.75 kg), Atarraya Verde (40 kg), Asovida (25 kg), Asopespor (20 kg), Pto. Trujillo (30 kg), Desembarcadero (50 kg) y Soplaviento (35 kg).</div>
+          <span class="agy-modal-trigger" style="margin-top:10px;">+ Ver Tabla y Fuentes (AUNAP / ECA)</span>
         </div>
-        <div class="agy-plinth-card">
+        <div class="agy-plinth-card" role="button" tabindex="0" style="cursor:pointer;" onclick="agyAbrirModalDetalle('kpi_merma')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalDetalle('kpi_merma');}}" title="Haz clic para ver el desglose matemático y algorítmico del 40.0% de pérdida poscaptura">
           <div class="agy-stat-num" style="color:var(--color-ember-accent);">40.0<span class="agy-stat-unit">%</span></div>
           <div class="agy-stat-title">Pérdida Poscaptura Sin Cadena de Frío</div>
           <div class="agy-stat-desc">A 30 °C la cachama pierde 2.5%/h (y 3.75%/h en zonas D). Hacia Bogotá sin frío se pierde el 36.1% de la carga ($1,151,000 COP/día en merma).</div>
+          <span class="agy-modal-trigger" style="margin-top:10px;">+ Ver 5 Modelos y Fórmulas de Merma</span>
         </div>
-        <div class="agy-plinth-card highlight-iris">
+        <div class="agy-plinth-card highlight-iris" role="button" tabindex="0" style="cursor:pointer;" onclick="agyAbrirModalDetalle('kpi_fao')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalDetalle('kpi_fao');}}" title="Haz clic para ver el fundamento biológico, Codex Alimentarius y algoritmo TCSPP del límite FAO">
           <div class="agy-stat-num">4.0<span class="agy-stat-unit">h (240 min)</span></div>
           <div class="agy-stat-title">Límite Sanitario FAO (Riesgo Histamina)</div>
           <div class="agy-stat-desc">Sin centros de frío, el viaje a mercado toma hasta 9.48 h (569 min = 237% sobre el límite FAO), disparando bacterias e histamina tóxica.</div>
+          <span class="agy-modal-trigger" style="margin-top:10px;">+ Ver Fundamento FAO y Algoritmo TCSPP</span>
         </div>
-        <div class="agy-plinth-card">
+        <div class="agy-plinth-card" role="button" tabindex="0" style="cursor:pointer;" onclick="agyAbrirModalDetalle('kpi_aislamiento')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalDetalle('kpi_aislamiento');}}" title="Haz clic para ver el desglose tramo a tramo de los 63.0 km desde P05 Puerto Trujillo">
           <div class="agy-stat-num">63.0<span class="agy-stat-unit">km</span></div>
           <div class="agy-stat-title">Aislamiento Fluvial Crítico (P05 Iteviare)</div>
           <div class="agy-stat-desc">Puerto Trujillo navega 63 km (2.70 h) cruzando la zona de deterioro D01 y el muelle M02 (+15 min de espera al sol) sin energía eléctrica.</div>
+          <span class="agy-modal-trigger" style="margin-top:10px;">+ Ver Desglose de Ruta (63.0 km / 2.95 h)</span>
         </div>
       </div>
 
@@ -2386,31 +2914,184 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
         </div>
       </div>
 
-      <!-- Simulador Interactivo de Área Térmica con Time Crosshair Arrastrable (Inspirado en Hero 57) -->
+      <!-- ═══════════════════════════════════════════════════════════════════
+           SIMULADOR TÉRMICO v2 — Estilo Highcharts (Canvas + Plot Bands + Tooltip)
+           ═══════════════════════════════════════════════════════════════════ -->
       <div class="agy-crosshair-panel">
-        <div class="agy-math-top" style="padding-bottom:14px;margin-bottom:12px;">
-          <div class="agy-math-heading">
-            <h2>Simulador Interactivo de Degradación Térmica · Cachama (<em style="font-family:var(--font-serif);font-style:italic;font-weight:400;">Colossoma macropomum</em>)</h2>
-            <p>Arrastra el cursor de tiempo (<strong>0.0 h → 10.0 h</strong>) para comparar en vivo qué le ocurre a los <strong>265.75 kg/día</strong> sin solución (30 °C) frente a la cadena de frío optimizada (0 °C).</p>
+        <div class="agy-chart-header">
+          <div>
+            <h2>Simulador Interactivo de Degradación Térmica</h2>
+            <p>Arrastra el cursor o pasa el ratón sobre el gráfico para comparar la degradación de <strong>265.75 kg/día</strong> de Cachama (<em>Colossoma macropomum</em>) a <strong>30 °C</strong> sin cadena de frío vs. con centro <strong>F02</strong> a 0 °C.</p>
           </div>
-          <div class="agy-math-eq" aria-label="D acumulada igual a D sub cero más sumatoria de k sub i por t sub i">
-            <var>D</var><sub>acum</sub>(<var>t</var>) <span>=</span> <var>D</var><sub>0</sub> <span>+</span> &Sigma; ( <var>k</var><sub>base</sub> &middot; <var>&phi;</var><sub>D</sub> &middot; <var>t</var><sub>i</sub> )
+          <button type="button" id="agy-therm-formula-btn" class="agy-therm-formula-btn" onclick="agyToggleFormulaTermica()" aria-expanded="false" aria-controls="agy-therm-formula-drawer" title="Haz clic para ver el desglose matemático interactivo de cada variable">
+            <div class="agy-therm-formula-main">
+              <var onclick="event.stopPropagation();agyEnfocarVariableFormula('dacum')">D<sub>acum</sub>(t)</var>
+              <span class="agy-op">=</span>
+              <var onclick="event.stopPropagation();agyEnfocarVariableFormula('d0')">D<sub>0</sub></var>
+              <span class="agy-op">+</span>
+              <span class="agy-sum">&Sigma;</span>
+              <span>(</span>
+              <var onclick="event.stopPropagation();agyEnfocarVariableFormula('kbase')">k<sub>base</sub></var>
+              <span class="agy-op">&middot;</span>
+              <var onclick="event.stopPropagation();agyEnfocarVariableFormula('phid')">&phi;<sub><i>D</i></sub></var>
+              <span class="agy-op">&middot;</span>
+              <var onclick="event.stopPropagation();agyEnfocarVariableFormula('ti')">t<sub><i>i</i></sub></var>
+              <span>)</span>
+            </div>
+            <span class="agy-therm-formula-hint">
+              <span class="hint-dot"></span>
+              <span id="agy-therm-formula-hint-txt">Haz clic en la fórmula o en sus términos para desglosar variables</span>
+            </span>
+          </button>
+        </div>
+
+        <!-- Panel Interactivo y Organizado de la Ecuación Cinética de Degradación -->
+        <div id="agy-therm-formula-drawer" class="agy-formula-drawer" role="region" aria-label="Desglose de variables de la ecuación de degradación térmica">
+          <div class="agy-formula-terms-bar">
+            <button type="button" class="agy-term-pill active" data-term="all" onclick="agySeleccionarTerminoFormula('all')">
+              Ver Todas las Variables (5)
+            </button>
+            <button type="button" class="agy-term-pill" data-term="dacum" onclick="agySeleccionarTerminoFormula('dacum')">
+              <code>D<sub>acum</sub>(t)</code> Degradación Acumulada
+            </button>
+            <button type="button" class="agy-term-pill" data-term="d0" onclick="agySeleccionarTerminoFormula('d0')">
+              <code>D<sub>0</sub></code> Deterioro Inicial
+            </button>
+            <button type="button" class="agy-term-pill" data-term="kbase" onclick="agySeleccionarTerminoFormula('kbase')">
+              <code>k<sub>base</sub></code> Constante Cinética
+            </button>
+            <button type="button" class="agy-term-pill" data-term="phid" onclick="agySeleccionarTerminoFormula('phid')">
+              <code>&phi;<sub><i>D</i></sub></code> Factor Zona D
+            </button>
+            <button type="button" class="agy-term-pill" data-term="ti" onclick="agySeleccionarTerminoFormula('ti')">
+              <code>t<sub><i>i</i></sub></code> Tiempo en Tramo i
+            </button>
+          </div>
+
+          <div class="agy-formula-grid" id="agy-formula-cards-grid">
+            <!-- 1. D_acum(t) -->
+            <div class="agy-formula-card highlighted" data-fcard="dacum" onclick="agySeleccionarTerminoFormula('dacum')">
+              <div class="agy-fcard-head">
+                <span class="agy-fcard-sym">D<sub>acum</sub>(t)</span>
+                <span class="agy-fcard-title">Degradación Térmica Acumulada</span>
+              </div>
+              <div class="agy-fcard-body">
+                Es el porcentaje total de pérdida de calidad/masa (<span class="agy-tex">0%</span> a <span class="agy-tex">100%</span>) que ha sufrido el lote de pescado tras transcurrir un tiempo total <span class="agy-tex"><var>t</var></span>.
+                <div class="agy-fcard-mathbox">
+                  <span class="agy-tex">0% <span class="agy-op">&le;</span> <var>D</var><sub>acum</sub>(<var>t</var>) <span class="agy-op">&le;</span> 100%</span>
+                  &nbsp;&middot;&nbsp;
+                  <span class="agy-tex"><var>t</var><sub>FAO</sub> <span class="agy-op">&le;</span> 4.0 h</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. D_0 -->
+            <div class="agy-formula-card" data-fcard="d0" onclick="agySeleccionarTerminoFormula('d0')">
+              <div class="agy-fcard-head">
+                <span class="agy-fcard-sym">D<sub>0</sub></span>
+                <span class="agy-fcard-title">Deterioro Inicial</span>
+              </div>
+              <div class="agy-fcard-body">
+                Es el estado de frescura en el instante de la captura (<span class="agy-tex"><var>t</var> <span class="agy-op">=</span> 0</span>). En condiciones de pesca artesanal inmediata se asume:
+                <div class="agy-fcard-mathbox">
+                  <span class="agy-tex"><var>D</var><sub>0</sub> <span class="agy-op">=</span> 0%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. k_base -->
+            <div class="agy-formula-card" data-fcard="kbase" onclick="agySeleccionarTerminoFormula('kbase')">
+              <div class="agy-fcard-head">
+                <span class="agy-fcard-sym">k<sub>base</sub></span>
+                <span class="agy-fcard-title">Constante Cinética de Degradación Bacteriana</span>
+              </div>
+              <div class="agy-fcard-body">
+                Depende de la temperatura ambiente según las curvas de conservación de la FAO:
+                <ul>
+                  <li><strong>A temperatura ambiente de los Llanos (<span class="agy-tex">30 &deg;C</span>):</strong></li>
+                </ul>
+                <div class="agy-fcard-mathbox">
+                  <span class="agy-tex"><var>k</var><sub>base</sub> <span class="agy-op">=</span> 2.5% / h <span class="agy-op">=</span> 0.025 h<sup>&minus;1</sup></span>
+                </div>
+                <ul>
+                  <li><strong>Bajo refrigeración activa (<span class="agy-tex">0 &deg;C</span> en Centro F02 o hielo <span class="agy-tex">1:1</span>):</strong> El metabolismo bacteriano se frena en un 90%, cayendo a:</li>
+                </ul>
+                <div class="agy-fcard-mathbox">
+                  <span class="agy-tex"><var>k</var><sub>frío</sub> <span class="agy-op">=</span> 0.25% / h <span class="agy-op">=</span> 0.0025 h<sup>&minus;1</sup></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. phi_D -->
+            <div class="agy-formula-card" data-fcard="phid" onclick="agySeleccionarTerminoFormula('phid')">
+              <div class="agy-fcard-head">
+                <span class="agy-fcard-sym">&phi;<sub><i>D</i></sub></span>
+                <span class="agy-fcard-title">Factor Multiplicador de Zona Crítica D</span>
+              </div>
+              <div class="agy-fcard-body">
+                Modela la vulnerabilidad geográfica del tramo:
+                <ul>
+                  <li>En tramos fluviales o carreteras normales: <span class="agy-tex"><var>&phi;</var><sub><i>D</i></sub> <span class="agy-op">=</span> 1.0</span>.</li>
+                  <li>En Zonas de Deterioro Térmico (<span class="agy-tex">D01, D02</span>): <span class="agy-tex"><var>&phi;</var><sub><i>D</i></sub> <span class="agy-op">=</span> 1.5</span>.</li>
+                </ul>
+                <div class="agy-fcard-mathbox">
+                  <span class="agy-tex"><var>k</var><sub>zona D</sub> <span class="agy-op">=</span> 2.5% <span class="agy-op">&times;</span> 1.5 <span class="agy-op">=</span> 3.75% / h</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 5. t_i -->
+            <div class="agy-formula-card" data-fcard="ti" onclick="agySeleccionarTerminoFormula('ti')">
+              <div class="agy-fcard-head">
+                <span class="agy-fcard-sym">t<sub><i>i</i></sub></span>
+                <span class="agy-fcard-title">Tiempo en el Tramo i</span>
+              </div>
+              <div class="agy-fcard-body">
+                Número de horas transcurridas en cada segmento dirigido <span class="agy-tex"><var>e</var><sub><i>i</i></sub> <span class="agy-op">&in;</span> <var>E</var></span> de la ruta logística.
+                <div class="agy-fcard-mathbox">
+                  <span class="agy-tex"><var>t</var> <span class="agy-op">=</span> <span class="agy-sum">&Sigma;</span> <var>t</var><sub><i>i</i></sub> <span class="agy-op">=</span> <strong id="agy-fcard-ti-live" style="color:#ffffff">2.20 h</strong></span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
+        <!-- Leyenda Interactiva (toggle de series) -->
+        <div class="agy-chart-legend" id="agy-therm-legend">
+          <div class="agy-legend-item" data-series="sinFrio" onclick="agyToggleSerie('sinFrio', this)">
+            <span class="agy-legend-swatch" style="background:#ff6b2b;"></span>Sin Solución (30 °C, 2.5%/h)
+          </div>
+          <div class="agy-legend-item" data-series="zonaD" onclick="agyToggleSerie('zonaD', this)">
+            <span class="agy-legend-swatch" style="background:#dc5000;border:1px dashed #dc5000;background:transparent;"></span>Zona D (×1.5 → 3.75%/h)
+          </div>
+          <div class="agy-legend-item" data-series="conF02" onclick="agyToggleSerie('conF02', this)">
+            <span class="agy-legend-swatch" style="background:#10b981;"></span>Con F02 (0 °C, 0.25%/h)
+          </div>
+        </div>
+
+        <!-- Canvas del gráfico interactivo -->
+        <div class="agy-chart-canvas-wrap" id="agy-therm-chart-wrap">
+          <canvas id="agy-therm-canvas" height="320"></canvas>
+          <div class="agy-chart-tooltip" id="agy-therm-tooltip"></div>
+        </div>
+
+        <!-- Controles: Slider + Presets -->
         <div class="agy-crosshair-controls">
-          <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--color-saffron-spark);">TIEMPO DE EXPOSICIÓN (t): <strong id="agy-sim-time-lbl" style="font-size:16px;color:var(--color-bone-white);">2.20 h (132 min)</strong></span>
-          <input id="agy-sim-time-slider" class="agy-time-slider" type="range" min="0" max="10" step="0.1" value="2.2" oninput="agyActualizarCrosshairTermico(this.value)" aria-label="Horas de exposición térmica">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="agy-ctrl-btn" onclick="document.getElementById('agy-sim-time-slider').value=0.48;agyActualizarCrosshairTermico(0.48)">P01 (0.48 h)</button>
-            <button class="agy-ctrl-btn" onclick="document.getElementById('agy-sim-time-slider').value=2.20;agyActualizarCrosshairTermico(2.20)">P05 con F02 (2.20 h)</button>
-            <button class="agy-ctrl-btn" onclick="document.getElementById('agy-sim-time-slider').value=4.00;agyActualizarCrosshairTermico(4.00)">Límite FAO (4.0 h)</button>
-            <button class="agy-ctrl-btn" onclick="document.getElementById('agy-sim-time-slider').value=9.48;agyActualizarCrosshairTermico(9.48)">Sin Frío a Bogotá (9.48 h)</button>
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--color-saffron-spark);white-space:nowrap;">t =</span>
+            <input id="agy-sim-time-slider" class="agy-time-slider" type="range" min="0" max="10" step="0.05" value="2.2" oninput="agyActualizarCrosshairTermico(parseFloat(this.value))" aria-label="Horas de exposición térmica">
+            <strong id="agy-sim-time-lbl" style="font-family:var(--font-mono);font-size:14px;color:var(--color-bone-white);white-space:nowrap;min-width:110px;">2.20 h (132 min)</strong>
+          </div>
+          <div class="agy-preset-btns">
+            <button class="agy-preset-btn" onclick="agySetPreset(0.48, this)">P01 · 0.48 h</button>
+            <button class="agy-preset-btn active-preset" onclick="agySetPreset(2.20, this)">P05+F02 · 2.20 h</button>
+            <button class="agy-preset-btn" onclick="agySetPreset(4.00, this)">FAO · 4.0 h</button>
+            <button class="agy-preset-btn" onclick="agySetPreset(9.48, this)">Bogotá · 9.48 h</button>
           </div>
         </div>
 
-        <div id="agy-sim-svg-wrap" style="width:100%;overflow:hidden;"></div>
-        <div id="agy-sim-readout-cards" class="agy-bento-grid-4" style="margin-top:16px;margin-bottom:0;"></div>
+        <!-- Tarjetas de readout -->
+        <div class="agy-sim-readout-row" id="agy-sim-readout-cards"></div>
       </div>
     </article>
 
@@ -2565,7 +3246,7 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
             <div class="agy-plinth-card obsidian">
               <h3>Defensa Técnica: ¿Por qué un Segundo Grafo Fluvial No Dirigido?</h3>
               <p style="font-size:14px;">1. <strong>Por qué no dirigido en el agua y dirigido en la logística:</strong> Las canoas a motor navegan físicamente aguas arriba y aguas abajo sobre el mismo cauce (por eso <code>RedFluvial</code> es no dirigido), pero el flujo comercial del pescado va estrictamente de captura a mercado (por eso <code>GrafoLogistico</code> es dirigido).<br>
-              2. <strong>Por qué desacoplar los 12,413 vértices del grafo de 25 nodos:</strong> Si metiéramos los 12,413 vértices del shapefile dentro de Floyd-Warshall $O(V^3)$, haría $1.9 \times 10^{12}$ operaciones (tardaría horas). Al precalcular los 10 tramos fluviales reales sobre <code>RedFluvial</code> e inyectarlos como 10 aristas ponderadas en <code>GrafoLogistico</code>, Floyd-Warshall tarda <strong>menos de 1 milisegundo</strong> ($25^3 = 15,625$ pasos) conservando la geometría real del río.</p>
+              2. <strong>Por qué desacoplar los 12,413 vértices del grafo de 25 nodos:</strong> Si metiéramos los 12,413 vértices del shapefile dentro de Floyd-Warshall <span class="agy-tex"><var>O</var>(<var>V</var><sup>3</sup>)</span>, haría <span class="agy-tex">1.9 <span class="agy-op">&times;</span> 10<sup>12</sup></span> operaciones (tardaría horas). Al precalcular los 10 tramos fluviales reales sobre <code>RedFluvial</code> e inyectarlos como 10 aristas ponderadas en <code>GrafoLogistico</code>, Floyd-Warshall tarda <strong>menos de 1 milisegundo</strong> (<span class="agy-tex">25<sup>3</sup> <span class="agy-op">=</span> 15,625</span> pasos) conservando la geometría real del río.</p>
             </div>
           </div>
         </div>
@@ -2574,18 +3255,18 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
         <div class="agy-step-pane" id="agy-step-pane-3">
           <div class="agy-bento-grid-2" style="margin-bottom:0;">
             <div class="agy-plinth-card obsidian">
-              <h3>La Analogía de Ingeniería y Cómo se Unen Ambos Grafos en G=(V,E)</h3>
-              <p style="font-size:14px;">• <strong>Punto de soldadura (Los Nodos Puente `M` y `A`):</strong> El Grafo de Ríos (10 aristas azules) y el Grafo Vial (31 aristas ámbar/violeta) se unen exactamente en los <strong>Muelles de Transbordo (<code>M01, M02, M03</code>) y Acopios Ribereños (<code>A01, A02, A03</code>)</strong>, que tienen grado de entrada fluvial &gt; 0 y grado de salida terrestre &gt; 0.<br>
+              <h3>La Analogía de Ingeniería y Cómo se Unen Ambos Grafos en <span class="agy-tex"><var>G</var> <span class="agy-op">=</span> (<var>V</var>, <var>E</var>)</span></h3>
+              <p style="font-size:14px;">• <strong>Punto de soldadura (Los Nodos Puente `M` y `A`):</strong> El Grafo de Ríos (10 aristas azules) y el Grafo Vial (31 aristas ámbar/violeta) se unen exactamente en los <strong>Muelles de Transbordo (<code>M01, M02, M03</code>) y Acopios Ribereños (<code>A01, A02, A03</code>)</strong>, que tienen grado de entrada fluvial <span class="agy-tex"><span class="agy-op">&gt;</span> 0</span> y grado de salida terrestre <span class="agy-tex"><span class="agy-op">&gt;</span> 0</span>.<br>
               • <strong>Analogía de una Red de Transmisión con Regeneradores de Señal:</strong><br>
-              — <em>Los ríos y canoas</em> son líneas de baja velocidad donde la "señal" (frescura del pescado) sufre atenuación térmica continua (2.5%/h).<br>
-              — <em>Los Muelles (M)</em> son convertidores de medio físico (agua → camión) con una latencia fija de +15 min.<br>
-              — <em>Los Centros de Frío (F)</em> actúan como <strong>repetidores regenerativos</strong>: antes de que la señal caiga del umbral de 4.0 h (histamina), abaten la temperatura a 0 °C y restauran la vida útil a 360 h.<br>
+              — <em>Los ríos y canoas</em> son líneas de baja velocidad donde la "señal" (frescura del pescado) sufre atenuación térmica continua (<span class="agy-tex">2.5% / h</span>).<br>
+              — <em>Los Muelles (M)</em> son convertidores de medio físico (agua → camión) con una latencia fija de <span class="agy-tex">+15 min</span>.<br>
+              — <em>Los Centros de Frío (F)</em> actúan como <strong>repetidores regenerativos</strong>: antes de que la señal caiga del umbral de <span class="agy-tex">4.0 h</span> (histamina), abaten la temperatura a <span class="agy-tex">0 &deg;C</span> y restauran la vida útil a <span class="agy-tex">360 h</span>.<br>
               — <em>Los Hábitats (H)</em> son cortafuegos (<em>firewalls</em>) que bloquean el enrutamiento por zonas prohibidas.</p>
             </div>
             <div class="agy-plinth-card obsidian">
               <h3>Criterio de Defensa: Preguntas Clave que Puedes Responder con Total Seguridad</h3>
-              <p style="font-size:14px;">• <strong>¿Por qué usar un peso multicriterio de 6 factores (`w_ij`) y no solo tiempo o distancia?</strong> Porque la ruta más corta en km puede ser una trocha destapada con 35% de probabilidad de retraso y alto riesgo térmico; el peso combinado equilibra Tiempo (25%), Costo (20%), Riesgo (20%), Pérdida (10%), Inestabilidad (10%) y Retraso (5%).<br>
-              • <strong>¿Por qué implementar simultáneamente Dijkstra, Bellman-Ford y Floyd-Warshall?</strong> Porque cumplen roles complementarios: <strong>Dijkstra</strong> resuelve el ruteo puntual en $O((V+E)\log V)$, <strong>Bellman-Ford</strong> audita formalmente la ausencia de ciclos negativos y valida al 100% los tiempos de Dijkstra, y <strong>Floyd-Warshall</strong> entrega la matriz completa $25\times 25$ que necesita el optimizador FLP para evaluar cualquier combinación de centros en $O(1)$.</p>
+              <p style="font-size:14px;">• <strong>¿Por qué usar un peso multicriterio de 6 factores (<span class="agy-tex"><var>w</var><sub><i>ij</i></sub></span>) y no solo tiempo o distancia?</strong> Porque la ruta más corta en km puede ser una trocha destapada con 35% de probabilidad de retraso y alto riesgo térmico; el peso combinado equilibra Tiempo (25%), Costo (20%), Riesgo (20%), Pérdida (10%), Inestabilidad (10%) y Retraso (5%).<br>
+              • <strong>¿Por qué implementar simultáneamente Dijkstra, Bellman-Ford y Floyd-Warshall?</strong> Porque cumplen roles complementarios: <strong>Dijkstra</strong> resuelve el ruteo puntual en <span class="agy-tex"><var>O</var>((<var>V</var> + <var>E</var>) log <var>V</var>)</span>, <strong>Bellman-Ford</strong> audita formalmente la ausencia de ciclos negativos y valida al 100% los tiempos de Dijkstra, y <strong>Floyd-Warshall</strong> entrega la matriz completa <span class="agy-tex">25 <span class="agy-op">&times;</span> 25</span> que necesita el optimizador FLP para evaluar cualquier combinación de centros en <span class="agy-tex"><var>O</var>(1)</span>.</p>
             </div>
           </div>
         </div>
@@ -2599,7 +3280,7 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
             <p>Selecciona cualquiera de las 41 aristas reales para inspeccionar cómo el programa calcula su peso combinado.</p>
           </div>
           <div class="agy-math-eq">
-            <var>w</var><sub>ij</sub> <span>=</span> 0.25<var>t&#770;</var><sub>ij</sub> <span>+</span> 0.20<var>c&#770;</var><sub>ij</sub> <span>+</span> 0.20<var>r</var><sub>comb</sub> <span>+</span> 0.10<var>p&#770;</var><sub>ij</sub> <span>+</span> 0.10(1&minus;<var>q</var><sub>ij</sub>) <span>+</span> 0.05<var>P</var><sub>ret</sub>
+            <var>w</var><sub><i>ij</i></sub> <span class="agy-op">=</span> 0.25<var>t&#770;</var><sub><i>ij</i></sub> <span class="agy-op">+</span> 0.20<var>c&#770;</var><sub><i>ij</i></sub> <span class="agy-op">+</span> 0.20<var>r</var><sub>comb</sub> <span class="agy-op">+</span> 0.10<var>p&#770;</var><sub><i>ij</i></sub> <span class="agy-op">+</span> 0.10(1<span class="agy-op">&minus;</span><var>q</var><sub><i>ij</i></sub>) <span class="agy-op">+</span> 0.05<var>P</var><sub>ret</sub>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
             <label for="agy-ed-edge-sim" style="font-size:13px;font-weight:500;color:var(--color-warm-cream);">Auditar Arista:</label>
@@ -3427,122 +4108,560 @@ function agyCambiarPasoConstruccion(idx) {{
   }}
 }}
 
-function agyActualizarCrosshairTermico(horasVal) {{
-  const t = Math.max(0, Math.min(10, parseFloat(horasVal) || 0));
-  const lbl = document.getElementById("agy-sim-time-lbl");
-  if (lbl) lbl.textContent = `${{t.toFixed(2)}} h (${{Math.round(t * 60)}} min)`;
+/* ═══════════════════════════════════════════════════════════════
+   SIMULADOR TÉRMICO v2 — Canvas Highcharts-style con Plot Bands,
+   Tooltip flotante, Spline suavizado y Leyenda interactiva
+   ═══════════════════════════════════════════════════════════════ */
+const agyThermState = {{
+  t: 2.20,
+  series: {{ sinFrio: true, zonaD: true, conF02: true }},
+  hoverT: null,
+  hoverSerie: null,
+  animProgress: 0,
+  animFrame: null
+}};
 
+const AGY_THERM_SERIES_META = {{
+  sinFrio: {{
+    key: "sinFrio",
+    nombre: "Sin Solución (30 °C)",
+    tasa: "2.5% / h · Exposición ambiente",
+    fn: agyCalcSinFrio,
+    color: "#ff6b2b",
+    halo: "rgba(255,107,43,0.24)",
+    r: 6
+  }},
+  zonaD: {{
+    key: "zonaD",
+    nombre: "Zona Crítica D (×1.5)",
+    tasa: "3.75% / h · Tramo de deterioro acelerado",
+    fn: agyCalcZonaD,
+    color: "#dc5000",
+    halo: "rgba(220,80,0,0.24)",
+    r: 5.5
+  }},
+  conF02: {{
+    key: "conF02",
+    nombre: "Con Centro F02 (0 °C)",
+    tasa: "0.25% / h · Cadena de frío optimizada",
+    fn: agyCalcConF02,
+    color: "#10b981",
+    halo: "rgba(16,185,129,0.24)",
+    r: 6
+  }}
+}};
+
+function agySetPreset(val, btn) {{
+  const slider = document.getElementById("agy-sim-time-slider");
+  if (slider) slider.value = val;
+  document.querySelectorAll(".agy-preset-btn").forEach(b => b.classList.remove("active-preset"));
+  if (btn) btn.classList.add("active-preset");
+  agyActualizarCrosshairTermico(val);
+}}
+
+function agyToggleSerie(key, el) {{
+  agyThermState.series[key] = !agyThermState.series[key];
+  el.classList.toggle("disabled", !agyThermState.series[key]);
+  agyDibujarChartTermico();
+}}
+
+// Modelos de degradación (misma lógica existente)
+function agyCalcSinFrio(h) {{ return Math.min(100, h * 2.5); }}
+function agyCalcZonaD(h) {{ return Math.min(100, h * 3.75); }}
+function agyCalcConF02(h) {{
+  const tAntes = Math.min(h, 0.85);
+  const tDespues = Math.max(0, h - tAntes);
+  return Math.min(100, tAntes * 2.5 + tDespues * 0.25);
+}}
+
+function agyDibujarChartTermico() {{
+  const canvas = document.getElementById("agy-therm-canvas");
+  if (!canvas) return;
+  const wrap = document.getElementById("agy-therm-chart-wrap");
+  const rect = wrap.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const W = rect.width;
+  const H = 320;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+
+  // Layout del área de dibujo
+  const pad = {{ l: 56, r: 28, t: 24, b: 42 }};
+  const pW = W - pad.l - pad.r;
+  const pH = H - pad.t - pad.b;
+  const maxPct = 45;
+  const maxH = 10;
+
+  const xOf = (h) => pad.l + (h / maxH) * pW;
+  const yOf = (pct) => pad.t + pH - (Math.min(maxPct, pct) / maxPct) * pH;
+
+  // Fondo
+  ctx.fillStyle = "#08080b";
+  ctx.fillRect(0, 0, W, H);
+
+  // ── PLOT BANDS (franjas horizontales tipo Highcharts) ──
+  const bands = [
+    {{ from: 0, to: 5, color: "rgba(16,185,129,0.04)", label: "Óptimo (< 5%)" }},
+    {{ from: 5, to: 10, color: "rgba(255,184,41,0.04)", label: "Leve (5–10%)" }},
+    {{ from: 10, to: 20, color: "rgba(255,107,43,0.04)", label: "Moderada (10–20%)" }},
+    {{ from: 20, to: 30, color: "rgba(220,80,0,0.06)", label: "Severa (20–30%)" }},
+    {{ from: 30, to: 45, color: "rgba(220,30,0,0.06)", label: "Pérdida total (> 30%)" }}
+  ];
+  bands.forEach((b, i) => {{
+    const y1 = yOf(b.to);
+    const y2 = yOf(b.from);
+    ctx.fillStyle = b.color;
+    ctx.fillRect(pad.l, y1, pW, y2 - y1);
+    // Etiqueta de banda
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.font = "500 10px 'Plus Jakarta Sans', sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(b.label, W - pad.r - 6, y1 + 14);
+  }});
+
+  // ── GRID LINES (horizontales sutiles) ──
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.lineWidth = 1;
+  for (let p = 0; p <= maxPct; p += 5) {{
+    const y = yOf(p);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(W - pad.r, y);
+    ctx.stroke();
+  }}
+
+  // ── GRID LINES (verticales cada hora) ──
+  for (let h = 0; h <= maxH; h++) {{
+    const x = xOf(h);
+    ctx.beginPath();
+    ctx.moveTo(x, pad.t);
+    ctx.lineTo(x, pad.t + pH);
+    ctx.strokeStyle = h === 4 ? "rgba(255,184,41,0.25)" : "rgba(255,255,255,0.04)";
+    ctx.lineWidth = h === 4 ? 1.5 : 1;
+    ctx.stroke();
+  }}
+
+  // ── ZONA ROJA FAO (> 4.0 h) ──
+  const xFAO = xOf(4.0);
+  ctx.fillStyle = "rgba(220,80,0,0.06)";
+  ctx.fillRect(xFAO, pad.t, xOf(10) - xFAO, pH);
+  // Etiqueta FAO
+  ctx.save();
+  ctx.fillStyle = "#ffb829";
+  ctx.font = "700 10px 'JetBrains Mono', monospace";
+  ctx.textAlign = "left";
+  ctx.fillText("LÍMITE FAO 4.0 h → RIESGO HISTAMINA", xFAO + 6, pad.t + 14);
+  ctx.restore();
+  // Línea punteada vertical FAO
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = "rgba(255,184,41,0.5)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(xFAO, pad.t);
+  ctx.lineTo(xFAO, pad.t + pH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── GENERAR PUNTOS DE LAS TRES CURVAS ──
+  const pts = {{ sinFrio: [], zonaD: [], conF02: [] }};
+  for (let h = 0; h <= maxH; h += 0.1) {{
+    const hR = Math.round(h * 10) / 10;
+    pts.sinFrio.push({{ x: xOf(hR), y: yOf(agyCalcSinFrio(hR)), h: hR, v: agyCalcSinFrio(hR) }});
+    pts.zonaD.push({{ x: xOf(hR), y: yOf(agyCalcZonaD(hR)), h: hR, v: agyCalcZonaD(hR) }});
+    pts.conF02.push({{ x: xOf(hR), y: yOf(agyCalcConF02(hR)), h: hR, v: agyCalcConF02(hR) }});
+  }}
+
+  // ── FUNCIÓN: DIBUJAR CURVA SPLINE CON ÁREA ──
+  function drawSplineArea(points, strokeColor, fillColor, lineWidth, dashed) {{
+    if (points.length < 2) return;
+    // Área rellena
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, pad.t + pH);
+    ctx.lineTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {{
+      const prev = points[i - 1];
+      const curr = points[i];
+      const cpx = (prev.x + curr.x) / 2;
+      ctx.bezierCurveTo(cpx, prev.y, cpx, curr.y, curr.x, curr.y);
+    }}
+    ctx.lineTo(points[points.length - 1].x, pad.t + pH);
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+
+    // Línea de la curva
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {{
+      const prev = points[i - 1];
+      const curr = points[i];
+      const cpx = (prev.x + curr.x) / 2;
+      ctx.bezierCurveTo(cpx, prev.y, cpx, curr.y, curr.x, curr.y);
+    }}
+    if (dashed) ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+    if (dashed) ctx.setLineDash([]);
+  }}
+
+  // ── DIBUJAR LAS SERIES (si están activas) ──
+  const hs = agyThermState.hoverSerie;
+  if (agyThermState.series.sinFrio) {{
+    drawSplineArea(pts.sinFrio, "#ff6b2b", "rgba(255,107,43,0.12)", hs === "sinFrio" ? 3.8 : 2.6, false);
+  }}
+  if (agyThermState.series.zonaD) {{
+    drawSplineArea(pts.zonaD, "#dc5000", "rgba(220,80,0,0.06)", hs === "zonaD" ? 3.0 : 1.8, true);
+  }}
+  if (agyThermState.series.conF02) {{
+    drawSplineArea(pts.conF02, "#10b981", "rgba(16,185,129,0.10)", hs === "conF02" ? 3.8 : 2.6, false);
+  }}
+
+  // ── CROSSHAIR E INDICADORES (BOLITAS QUE SIGUEN AL MOUSE O AL SLIDER) ──
+  const activeT = agyThermState.hoverT !== null ? agyThermState.hoverT : agyThermState.t;
+  const cx = xOf(activeT);
+
+  // Línea guía vertical
+  ctx.strokeStyle = hs ? AGY_THERM_SERIES_META[hs].color + "99" : "rgba(128,82,255,0.65)";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(cx, pad.t);
+  ctx.lineTo(cx, pad.t + pH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Puntos de intersección (las bolitas se desplazan en vivo con el mouse)
+  Object.values(AGY_THERM_SERIES_META).forEach(s => {{
+    if (!agyThermState.series[s.key]) return;
+    const isHovered = hs === s.key;
+    const isDimmed = hs !== null && !isHovered;
+    const pct = s.fn(activeT);
+    const cy = yOf(pct);
+    const rad = isHovered ? s.r + 2.5 : (isDimmed ? s.r - 1.5 : s.r);
+
+    ctx.save();
+    if (isDimmed) ctx.globalAlpha = 0.45;
+
+    // Halo exterior (más grande y brillante en la línea bajo el cursor)
+    ctx.beginPath();
+    ctx.arc(cx, cy, isHovered ? rad + 7 : rad + 4, 0, Math.PI * 2);
+    ctx.fillStyle = s.halo;
+    ctx.fill();
+
+    // Línea horizontal guía hacia el eje Y cuando el mouse está sobre esta curva
+    if (isHovered) {{
+      ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = s.color + "88";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.l, cy);
+      ctx.lineTo(cx, cy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }}
+
+    // Bolita principal
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.fillStyle = s.color;
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = isHovered ? 2.5 : 1.8;
+    ctx.stroke();
+    ctx.restore();
+  }});
+
+  // ── EJES ──
+  ctx.fillStyle = "#6e6e73";
+  ctx.font = "500 10px 'JetBrains Mono', monospace";
+  ctx.textAlign = "right";
+  for (let p = 0; p <= maxPct; p += 5) {{
+    ctx.fillText(p + "%", pad.l - 8, yOf(p) + 3.5);
+  }}
+  ctx.textAlign = "center";
+  for (let h = 0; h <= maxH; h++) {{
+    ctx.fillStyle = h === 4 ? "#ffb829" : "#6e6e73";
+    ctx.fillText(h + ".0 h", xOf(h), H - pad.b + 18);
+  }}
+
+  // Etiqueta eje Y
+  ctx.save();
+  ctx.translate(14, pad.t + pH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = "#6e6e73";
+  ctx.font = "600 10px 'Plus Jakarta Sans', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Degradación (%)", 0, 0);
+  ctx.restore();
+
+  // Etiqueta eje X
+  ctx.fillStyle = "#6e6e73";
+  ctx.font = "600 10px 'Plus Jakarta Sans', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Tiempo de exposición sin refrigeración (horas)", pad.l + pW / 2, H - 4);
+
+  // Hitos clave en eje X (anotaciones)
+  const hitos = [
+    {{ h: 0.85, label: "F02 abate", color: "#10b981" }},
+    {{ h: 2.20, label: "P05 máx", color: "#2997ff" }},
+    {{ h: 9.48, label: "Bogotá", color: "#ff6b2b" }}
+  ];
+  hitos.forEach(m => {{
+    const mx = xOf(m.h);
+    ctx.setLineDash([2, 3]);
+    ctx.strokeStyle = m.color + "55";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(mx, pad.t + pH - 4);
+    ctx.lineTo(mx, pad.t + pH + 8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = m.color;
+    ctx.font = "700 9px 'JetBrains Mono', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(m.label, mx, pad.t + pH + 32);
+  }});
+}}
+
+// ── HOVER / TOOLTIP flotante sobre el Canvas (solo al pasar sobre la línea + seguimiento continuo) ──
+(function() {{
+  let canvasReady = false;
+  function setupCanvasHover() {{
+    const canvas = document.getElementById("agy-therm-canvas");
+    const tooltip = document.getElementById("agy-therm-tooltip");
+    const wrap = document.getElementById("agy-therm-chart-wrap");
+    if (!canvas || !tooltip || !wrap) {{
+      if (!canvasReady) setTimeout(setupCanvasHover, 300);
+      return;
+    }}
+    canvasReady = true;
+    const pad = {{ l: 56, r: 28, t: 24, b: 42 }};
+    const maxPct = 45;
+    const HIT_TOLERANCE_PX = 24;
+
+    canvas.addEventListener("mousemove", function(e) {{
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const pW = rect.width - pad.l - pad.r;
+      const pH = rect.height - pad.t - pad.b;
+
+      if (mx < pad.l || mx > rect.width - pad.r || my < pad.t || my > pad.t + pH) {{
+        tooltip.classList.remove("visible");
+        agyThermState.hoverT = null;
+        agyThermState.hoverSerie = null;
+        canvas.style.cursor = "crosshair";
+        agyDibujarChartTermico();
+        return;
+      }}
+
+      // Hora continua según la posición X del ratón para que las bolitas se deslicen fluidamente
+      const hVal = Math.max(0, Math.min(10, ((mx - pad.l) / pW) * 10));
+      const yOf = (pct) => pad.t + pH - (Math.min(maxPct, pct) / maxPct) * pH;
+
+      // Detectar cuál curva está directamente bajo el cursor (distancia vertical my -> cy)
+      let closestKey = null;
+      let minDist = Infinity;
+      Object.values(AGY_THERM_SERIES_META).forEach(s => {{
+        if (!agyThermState.series[s.key]) return;
+        const cy = yOf(s.fn(hVal));
+        const dist = Math.abs(my - cy);
+        if (dist < minDist) {{
+          minDist = dist;
+          closestKey = s.key;
+        }}
+      }});
+
+      const isOverLine = closestKey !== null && minDist <= HIT_TOLERANCE_PX;
+
+      // Actualizar estado para que los indicadores (bolitas), el slider y las tarjetas sigan al mouse en vivo
+      agyThermState.hoverT = hVal;
+      agyThermState.hoverSerie = isOverLine ? closestKey : null;
+      agyThermState.t = hVal;
+
+      const slider = document.getElementById("agy-sim-time-slider");
+      if (slider) slider.value = hVal.toFixed(2);
+      const lbl = document.getElementById("agy-sim-time-lbl");
+      if (lbl) lbl.textContent = `${{hVal.toFixed(2)}} h (${{Math.round(hVal * 60)}} min)`;
+
+      agyRenderizarTarjetasTermicas(hVal);
+      agyDibujarChartTermico();
+
+      // Mostrar el cuadro de información SOLO cuando el cursor pasa por encima de la línea
+      if (!isOverLine) {{
+        tooltip.classList.remove("visible");
+        canvas.style.cursor = "crosshair";
+        return;
+      }}
+
+      canvas.style.cursor = "pointer";
+      const sMeta = AGY_THERM_SERIES_META[closestKey];
+      const pctVal = sMeta.fn(hVal);
+      const prodTotal = 265.75;
+      const kgPerdidos = prodTotal * (pctVal / 100);
+      const copPerdidos = Math.round(kgPerdidos * 12000);
+
+      const faoStatus = hVal > 4.0
+        ? `<div style="margin-top:6px;padding:3px 8px;background:rgba(220,80,0,0.16);border-radius:6px;color:#ff6b2b;font-size:10px;font-weight:700;">⚠ SUPERA LÍMITE FAO (240 min)</div>`
+        : `<div style="margin-top:6px;padding:3px 8px;background:rgba(16,185,129,0.14);border-radius:6px;color:#10b981;font-size:10px;font-weight:700;">✓ INOCUO (DENTRO DE LÍMITE FAO)</div>`;
+
+      tooltip.innerHTML = `
+        <div class="tt-title" style="display:flex;align-items:center;gap:7px;">
+          <span class="tt-dot" style="background:${{sMeta.color}}"></span>
+          <span>${{sMeta.nombre}}</span>
+        </div>
+        <div style="font-size:10.5px;color:var(--color-ash);margin-bottom:6px;">${{sMeta.tasa}}</div>
+        <div class="tt-row"><span>Tiempo (t):</span><span class="tt-val" style="color:var(--color-bone-white)">${{hVal.toFixed(2)}} h (${{Math.round(hVal * 60)}} min)</span></div>
+        <div class="tt-row"><span>Degradación:</span><span class="tt-val" style="color:${{sMeta.color}}">${{pctVal.toFixed(2)}}%</span></div>
+        <div class="tt-row"><span>Merma física:</span><span class="tt-val">${{kgPerdidos.toFixed(1)}} kg / 265.8 kg</span></div>
+        <div class="tt-row"><span>Impacto económico:</span><span class="tt-val">$${{copPerdidos.toLocaleString()}} COP</span></div>
+        ${{faoStatus}}
+      `;
+      tooltip.classList.add("visible");
+
+      // Posicionar el tooltip anclado a la bolita activa sobre la línea
+      const cx = pad.l + (hVal / 10) * pW;
+      const cy = yOf(pctVal);
+      let tx = cx + 16;
+      let ty = cy - 42;
+      if (tx + 240 > rect.width) tx = cx - 252;
+      if (ty + 155 > rect.height) ty = rect.height - 162;
+      if (ty < 8) ty = 8;
+      tooltip.style.left = tx + "px";
+      tooltip.style.top = ty + "px";
+    }});
+
+    canvas.addEventListener("mouseleave", function() {{
+      tooltip.classList.remove("visible");
+      agyThermState.hoverT = null;
+      agyThermState.hoverSerie = null;
+      canvas.style.cursor = "crosshair";
+      agyDibujarChartTermico();
+    }});
+
+    // Click en el canvas fija el tiempo seleccionado
+    canvas.addEventListener("click", function(e) {{
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const pW = rect.width - pad.l - pad.r;
+      if (mx >= pad.l && mx <= rect.width - pad.r) {{
+        const hVal = Math.max(0, Math.min(10, ((mx - pad.l) / pW) * 10));
+        const slider = document.getElementById("agy-sim-time-slider");
+        if (slider) slider.value = hVal.toFixed(2);
+        document.querySelectorAll(".agy-preset-btn").forEach(b => b.classList.remove("active-preset"));
+        agyActualizarCrosshairTermico(hVal);
+      }}
+    }});
+  }}
+  if (document.readyState === "loading") {{
+    document.addEventListener("DOMContentLoaded", setupCanvasHover);
+  }} else {{
+    setTimeout(setupCanvasHover, 100);
+  }}
+}})();
+
+function agyRenderizarTarjetasTermicas(t) {{
   const prodTotal = 265.75;
   const pctSinFrio = Math.min(100, t * 2.5);
   const pctZonaD = Math.min(100, t * 3.75);
-  // Con F02 el pescado entra a 0 °C a lo sumo en 2.20 h (promedio 0.45 h) y luego decae a 0.25%/h
   const tAntesFrio = Math.min(t, 0.85);
   const tEnFrio = Math.max(0, t - tAntesFrio);
   const pctConF02 = Math.min(100, tAntesFrio * 2.5 + tEnFrio * 0.25);
 
-  const kgPerdidosSinFrio = prodTotal * (pctSinFrio / 100);
-  const kgPerdidosConF02 = prodTotal * (pctConF02 / 100);
-  const copPerdidosSinFrio = kgPerdidosSinFrio * 12000;
-  const copAhorrados = (kgPerdidosSinFrio - kgPerdidosConF02) * 12000;
+  const kgSin = prodTotal * (pctSinFrio / 100);
+  const kgCon = prodTotal * (pctConF02 / 100);
+  const copPerdidos = kgSin * 12000;
+  const copAhorrados = (kgSin - kgCon) * 12000;
   const violaFAO = t > 4.0;
 
-  const svgWrap = document.getElementById("agy-sim-svg-wrap");
-  if (svgWrap) {{
-    const W = 920;
-    const H = 200;
-    const padL = 48;
-    const padR = 24;
-    const padT = 18;
-    const padB = 30;
-    const plotW = W - padL - padR;
-    const plotH = H - padT - padB;
-    const xOf = (hr) => padL + (hr / 10) * plotW;
-    const yOf = (pct) => padT + plotH - (Math.min(45, pct) / 45) * plotH;
-
-    const ptsSin = [];
-    const ptsZonaD = [];
-    const ptsF02 = [];
-    for (let h = 0; h <= 10; h += 0.25) {{
-      ptsSin.push(`${{xOf(h).toFixed(1)}},${{yOf(h * 2.5).toFixed(1)}}`);
-      ptsZonaD.push(`${{xOf(h).toFixed(1)}},${{yOf(h * 3.75).toFixed(1)}}`);
-      const taf = Math.min(h, 0.85);
-      const tef = Math.max(0, h - taf);
-      ptsF02.push(`${{xOf(h).toFixed(1)}},${{yOf(taf * 2.5 + tef * 0.25).toFixed(1)}}`);
-    }}
-
-    const cx = xOf(t);
-    const xFAO = xOf(4.0);
-    const areaSin = `M ${{xOf(0)}},${{padT + plotH}} L ${{ptsSin.join(" L ")}} L ${{xOf(10)}},${{padT + plotH}} Z`;
-    const areaF02 = `M ${{xOf(0)}},${{padT + plotH}} L ${{ptsF02.join(" L ")}} L ${{xOf(10)}},${{padT + plotH}} Z`;
-
-    svgWrap.innerHTML = `
-      <svg viewBox="0 0 ${{W}} ${{H}}" style="width:100%;height:auto;display:block;background:#060608;border-radius:14px;border:1px solid var(--color-steel);">
-        <defs>
-          <linearGradient id="gradSinFrio" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#ff6b2b" stop-opacity="0.34"/>
-            <stop offset="100%" stop-color="#ff6b2b" stop-opacity="0.02"/>
-          </linearGradient>
-          <linearGradient id="gradConF02" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#10b981" stop-opacity="0.32"/>
-            <stop offset="100%" stop-color="#10b981" stop-opacity="0.02"/>
-          </linearGradient>
-        </defs>
-        <!-- Zona Roja de Riesgo de Histamina (> 4.0 h FAO) -->
-        <rect x="${{xFAO}}" y="${{padT}}" width="${{xOf(10) - xFAO}}" height="${{plotH}}" fill="rgba(220,80,0,0.09)"/>
-        <line x1="${{xFAO}}" y1="${{padT}}" x2="${{xFAO}}" y2="${{padT + plotH}}" stroke="#ffb829" stroke-width="1.5" stroke-dasharray="5 4"/>
-        <text x="${{xFAO + 6}}" y="${{padT + 14}}" fill="#ffb829" font-family="var(--font-mono)" font-size="10.5" font-weight="700">LÍMITE FAO 4.0 h (240 min) → RIESGO DE HISTAMINA</text>
-
-        <!-- Áreas y Curvas -->
-        <path d="${{areaSin}}" fill="url(#gradSinFrio)"/>
-        <path d="${{areaF02}}" fill="url(#gradConF02)"/>
-        <polyline fill="none" stroke="#dc5000" stroke-width="1.8" stroke-dasharray="4 3" points="${{ptsZonaD.join(" ")}}"/>
-        <polyline fill="none" stroke="#ff6b2b" stroke-width="2.6" points="${{ptsSin.join(" ")}}"/>
-        <polyline fill="none" stroke="#10b981" stroke-width="2.8" points="${{ptsF02.join(" ")}}"/>
-
-        <!-- Crosshair Vertical Interactivo -->
-        <line x1="${{cx}}" y1="${{padT}}" x2="${{cx}}" y2="${{padT + plotH}}" stroke="#8052ff" stroke-width="2.2"/>
-        <circle cx="${{cx}}" cy="${{yOf(pctZonaD)}}" r="4.5" fill="#dc5000" stroke="#ffffff" stroke-width="1.5"/>
-        <circle cx="${{cx}}" cy="${{yOf(pctSinFrio)}}" r="5.5" fill="#ff6b2b" stroke="#ffffff" stroke-width="1.5"/>
-        <circle cx="${{cx}}" cy="${{yOf(pctConF02)}}" r="5.5" fill="#10b981" stroke="#ffffff" stroke-width="1.5"/>
-
-        <!-- Ejes -->
-        <text x="${{padL - 8}}" y="${{padT + 10}}" text-anchor="end" fill="#9a9a9a" font-family="var(--font-mono)" font-size="10">40%</text>
-        <text x="${{padL - 8}}" y="${{padT + plotH / 2}}" text-anchor="end" fill="#9a9a9a" font-family="var(--font-mono)" font-size="10">20%</text>
-        <text x="${{padL - 8}}" y="${{padT + plotH}}" text-anchor="end" fill="#9a9a9a" font-family="var(--font-mono)" font-size="10">0%</text>
-        <text x="${{xOf(0)}}" y="${{H - 8}}" fill="#9a9a9a" font-family="var(--font-mono)" font-size="10">0.0 h</text>
-        <text x="${{xOf(2.2)}}" y="${{H - 8}}" text-anchor="middle" fill="#10b981" font-family="var(--font-mono)" font-size="10">2.2 h (Máx P05)</text>
-        <text x="${{xOf(4.0)}}" y="${{H - 8}}" text-anchor="middle" fill="#ffb829" font-family="var(--font-mono)" font-size="10">4.0 h (FAO)</text>
-        <text x="${{xOf(9.48)}}" y="${{H - 8}}" text-anchor="end" fill="#ff6b2b" font-family="var(--font-mono)" font-size="10">9.48 h (Bogotá)</text>
-      </svg>
-    `;
-  }}
+  const tiLive = document.getElementById("agy-fcard-ti-live");
+  if (tiLive) tiLive.textContent = `${{t.toFixed(2)}} h (${{Math.round(t * 60)}} min)`;
 
   const cardsWrap = document.getElementById("agy-sim-readout-cards");
   if (cardsWrap) {{
     cardsWrap.innerHTML = `
-      <div class="agy-plinth-card obsidian">
-        <div class="agy-stat-num" style="font-size:28px;color:var(--color-ember-accent);">${{pctSinFrio.toFixed(1)}}% <span class="agy-stat-unit">(${{kgPerdidosSinFrio.toFixed(1)}} kg)</span></div>
-        <div class="agy-stat-title">Merma SIN Solución (30 °C)</div>
-        <div class="agy-stat-desc">En zona crítica D (×1.5) sube a <strong>${{pctZonaD.toFixed(1)}}%</strong>. Pérdida: $${{Math.round(copPerdidosSinFrio).toLocaleString()}} COP/día.</div>
+      <div class="agy-readout-card">
+        <div class="agy-readout-val" style="color:#ff6b2b;">${{pctSinFrio.toFixed(1)}}%</div>
+        <div class="agy-readout-label">Merma sin solución (30 °C)</div>
+        <div class="agy-readout-sub">${{kgSin.toFixed(1)}} kg perdidos · $${{Math.round(copPerdidos).toLocaleString()}} COP/día.
+En Zona D: ${{pctZonaD.toFixed(1)}}%.</div>
       </div>
-      <div class="agy-plinth-card obsidian">
-        <div class="agy-stat-num" style="font-size:28px;color:#10b981;">${{pctConF02.toFixed(1)}}% <span class="agy-stat-unit">(${{kgPerdidosConF02.toFixed(1)}} kg)</span></div>
-        <div class="agy-stat-title">Merma CON Solución (Centro F02 a 0 °C)</div>
-        <div class="agy-stat-desc">Abate a 0 °C y frena la degradación un 90% (vida útil 360 h).</div>
+      <div class="agy-readout-card">
+        <div class="agy-readout-val" style="color:#10b981;">${{pctConF02.toFixed(1)}}%</div>
+        <div class="agy-readout-label">Merma con F02 (0 °C)</div>
+        <div class="agy-readout-sub">${{kgCon.toFixed(1)}} kg perdidos · Vida útil extendida a 360 h.</div>
       </div>
-      <div class="agy-plinth-card obsidian">
-        <div class="agy-stat-num" style="font-size:28px;color:var(--color-saffron-spark);">$${{Math.round(copAhorrados).toLocaleString()}} <span class="agy-stat-unit">COP/día</span></div>
-        <div class="agy-stat-title">Pescado Salvado en t = ${{t.toFixed(2)}} h</div>
-        <div class="agy-stat-desc">Equivale a <strong>${{(kgPerdidosSinFrio - kgPerdidosConF02).toFixed(1)}} kg/día</strong> rescatados de la descomposición.</div>
+      <div class="agy-readout-card">
+        <div class="agy-readout-val" style="color:var(--color-saffron-spark);">$${{Math.round(copAhorrados).toLocaleString()}}</div>
+        <div class="agy-readout-label">COP ahorrados / día</div>
+        <div class="agy-readout-sub">${{(kgSin - kgCon).toFixed(1)}} kg/día rescatados de descomposición.</div>
       </div>
-      <div class="agy-plinth-card obsidian">
-        <div class="agy-stat-num" style="font-size:24px;color:${{violaFAO ? 'var(--color-ember-accent)' : '#10b981'}};">${{violaFAO ? 'HISTAMINA CRÍTICA' : 'INOCUO (FAO OK)'}}</div>
-        <div class="agy-stat-title">Estado Sanitario a las ${{t.toFixed(2)}} h</div>
-        <div class="agy-stat-desc">${{violaFAO ? 'Supera los 240 min sin frío: producto no apto para consumo humano.' : 'Dentro de la ventana sanitaria de 240 min de la FAO.'}}</div>
+      <div class="agy-readout-card" style="border-color:${{violaFAO ? 'rgba(220,80,0,0.3)' : 'rgba(16,185,129,0.2)'}};">
+        <div class="agy-readout-val" style="font-size:20px;color:${{violaFAO ? '#ff6b2b' : '#10b981'}};">${{violaFAO ? '⚠ HISTAMINA CRÍTICA' : '✓ INOCUO (FAO OK)'}}</div>
+        <div class="agy-readout-label">Estado sanitario a t = ${{t.toFixed(2)}} h</div>
+        <div class="agy-readout-sub">${{violaFAO ? 'Supera 240 min sin frío: no apto para consumo.' : 'Dentro de la ventana FAO de 240 min.'}}</div>
       </div>
     `;
   }}
 }}
+
+function agyToggleFormulaTermica(forzarAbrir) {{
+  const drawer = document.getElementById("agy-therm-formula-drawer");
+  const btn = document.getElementById("agy-therm-formula-btn");
+  const hint = document.getElementById("agy-therm-formula-hint-txt");
+  if (!drawer || !btn) return;
+  const open = typeof forzarAbrir === "boolean" ? forzarAbrir : !drawer.classList.contains("open");
+  drawer.classList.toggle("open", open);
+  btn.classList.toggle("is-open", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (hint) {{
+    hint.textContent = open
+      ? "Ocultar desglose matemático de la ecuación (Haz clic aquí)"
+      : "Haz clic en la fórmula o en sus términos para desglosar variables";
+  }}
+}}
+
+function agySeleccionarTerminoFormula(termKey) {{
+  document.querySelectorAll("#agy-therm-formula-drawer .agy-term-pill").forEach(p => {{
+    p.classList.toggle("active", p.getAttribute("data-term") === termKey);
+  }});
+  document.querySelectorAll("#agy-formula-cards-grid .agy-formula-card").forEach(c => {{
+    const key = c.getAttribute("data-fcard");
+    if (termKey === "all") {{
+      c.style.display = "";
+      c.classList.remove("highlighted");
+    }} else {{
+      c.style.display = "";
+      c.classList.toggle("highlighted", key === termKey);
+    }}
+  }});
+}}
+
+function agyEnfocarVariableFormula(termKey) {{
+  agyToggleFormulaTermica(true);
+  agySeleccionarTerminoFormula(termKey);
+}}
+
+function agyActualizarCrosshairTermico(horasVal) {{
+  const t = Math.max(0, Math.min(10, parseFloat(horasVal) || 0));
+  agyThermState.t = t;
+  const lbl = document.getElementById("agy-sim-time-lbl");
+  if (lbl) lbl.textContent = `${{t.toFixed(2)}} h (${{Math.round(t * 60)}} min)`;
+
+  agyDibujarChartTermico();
+  agyRenderizarTarjetasTermicas(t);
+}}
+
+// Redimensionar el canvas al cambiar tamaño de ventana
+window.addEventListener("resize", function() {{
+  if (document.getElementById("agy-therm-canvas")) agyDibujarChartTermico();
+}});
+
 
 function agyRenderizarComparadorInteractivo() {{
   const filtro = document.getElementById("agy-comp-filter")?.value || "all";
@@ -3672,6 +4791,269 @@ function agyRenderizarComparadorAsociacion(asocId) {{
 }}
 
 const AGY_MODALES_INFO = {{
+  kpi_prod: {{
+    tag: "INDICADOR MAESTRO 1 · PRODUCCIÓN DIARIA EXPUESTA (265.75 kg/día)",
+    titulo: "Desglose Oficial de Producción por Asociación Pesquera y Justificación AUNAP / ECA",
+    cuerpo: `
+      <p>La carga total inyectada diariamente al grafo logístico <span class="agy-tex"><var>G</var> <span class="agy-op">=</span> (<var>V</var>, <var>E</var>)</span> proviene de los <strong>7 puntos de pesca artesanal (<span class="agy-tex"><var>P</var><sub>01</sub> &hellip; <var>P</var><sub>07</sub></span>)</strong> ubicados sobre las cuencas de los ríos Meta, Manacacías e Iteviare:</p>
+      <div style="overflow-x:auto;margin-top:14px;">
+        <table class="agy-table" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:10px 12px;">Nodo</th>
+              <th style="text-align:left;padding:10px 12px;">Asociación / Punto</th>
+              <th style="text-align:right;padding:10px 12px;">Producción (kg/día)</th>
+              <th style="text-align:left;padding:10px 12px;">Origen / Justificación del dato</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding:10px 12px;"><strong style="color:var(--col-pesca);">P01</strong></td>
+              <td style="padding:10px 12px;"><strong>ASOPESGA (Alto Neblinas)</strong></td>
+              <td style="padding:10px 12px;text-align:right;font-family:var(--font-mono);font-weight:700;color:var(--color-saffron-spark);">65.75</td>
+              <td style="padding:10px 12px;">Dato ancla histórico de la AUNAP: Corresponde al registro histórico formal de ASOPESGA de <strong>24 toneladas/año</strong> de captura extractiva convertido a tasa diaria:
+                <div class="agy-tex-block" style="margin:6px 0 2px;padding:8px 14px;font-size:16px;">
+                  <span class="agy-tex">
+                    <span class="agy-frac"><span class="agy-frac-num">24,000 kg</span><span class="agy-frac-den">365 días</span></span>
+                    <span class="agy-op">&approx;</span> 65.7534 kg/día
+                  </span>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;"><strong style="color:var(--col-pesca);">P02</strong></td>
+              <td style="padding:10px 12px;"><strong>Atarraya Verde</strong></td>
+              <td style="padding:10px 12px;text-align:right;font-family:var(--font-mono);font-weight:700;">40.00</td>
+              <td style="padding:10px 12px;">Producción piscícola artesanal en jaulas flotantes sobre el Río Manacacías (20 pescadores).</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;"><strong style="color:var(--col-pesca);">P03</strong></td>
+              <td style="padding:10px 12px;"><strong>Asovida (San Miguel)</strong></td>
+              <td style="padding:10px 12px;text-align:right;font-family:var(--font-mono);font-weight:700;">25.00</td>
+              <td style="padding:10px 12px;">Captura artesanal en la Vereda San Miguel sobre el Río Meta (11 pescadores).</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;"><strong style="color:var(--col-pesca);">P04</strong></td>
+              <td style="padding:10px 12px;"><strong>Asopespor</strong></td>
+              <td style="padding:10px 12px;text-align:right;font-family:var(--font-mono);font-weight:700;">20.00</td>
+              <td style="padding:10px 12px;">Pesca artesanal en cuenca media del Río Meta (10 pescadores).</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;"><strong style="color:var(--col-pesca);">P05</strong></td>
+              <td style="padding:10px 12px;"><strong>Puerto Trujillo</strong></td>
+              <td style="padding:10px 12px;text-align:right;font-family:var(--font-mono);font-weight:700;">30.00</td>
+              <td style="padding:10px 12px;">Producción comunitaria de 40 familias en frontera fluvial (Río Iteviare).</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;"><strong style="color:var(--col-pesca);">P06</strong></td>
+              <td style="padding:10px 12px;"><strong>Desembarcadero Central</strong></td>
+              <td style="padding:10px 12px;text-align:right;font-family:var(--font-mono);font-weight:700;">50.00</td>
+              <td style="padding:10px 12px;">Punto principal de desembarque comercial urbano en Puerto Gaitán (25 pescadores).</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;"><strong style="color:var(--col-pesca);">P07</strong></td>
+              <td style="padding:10px 12px;"><strong>Soplaviento</strong></td>
+              <td style="padding:10px 12px;text-align:right;font-family:var(--font-mono);font-weight:700;">35.00</td>
+              <td style="padding:10px 12px;">Zona de ensenada y estación experimental en el Río Manacacías (8 pescadores).</td>
+            </tr>
+            <tr style="border-top:2px solid var(--color-saffron-spark);background:rgba(255,184,41,0.08);">
+              <td style="padding:11px 12px;"><strong style="color:var(--color-saffron-spark);">TOTAL</strong></td>
+              <td style="padding:11px 12px;"><strong style="color:var(--color-bone-white);">Red Completa</strong></td>
+              <td style="padding:11px 12px;text-align:right;font-family:var(--font-mono);font-size:16px;font-weight:800;color:var(--color-saffron-spark);">265.75</td>
+              <td style="padding:11px 12px;"><strong style="color:var(--color-warm-cream);">Carga total inyectada al sistema logístico</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="agy-prop-group" style="margin-top:16px;">
+        <h4><span>Fuentes Oficiales de Verificación</span><span>Trazabilidad del Dato</span></h4>
+        <div class="agy-prop-row"><span class="agy-prop-key">1. Autoridad Nacional de Acuicultura y Pesca</span><span class="agy-prop-val">Registro pesquero de la AUNAP y diagnóstico municipal de Puerto Gaitán</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">2. Trabajo de Campo Universitario y Municipal</span><span class="agy-prop-val">Censos y talleres diagnósticos de la ECA (Proyecto C05-01-2026-003 — UNILLANOS / Alcaldía)</span></div>
+      </div>
+    `
+  }},
+  kpi_merma: {{
+    tag: "INDICADOR MAESTRO 2 · PÉRDIDA POSCAPTURA SIN CADENA DE FRÍO (40.0%)",
+    titulo: "Fundamentación Matemática, Cinética y Algorítmica de la Merma Poscaptura",
+    cuerpo: `
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="agy-prop-group" style="margin:0;">
+          <h4><span>1. El 40.0% de Pérdida Poscaptura</span><span>Worst-Case Path Analysis</span></h4>
+          <p style="font-size:13.5px;margin:6px 0;">Es el porcentaje máximo de pescado que se echa a perder por completo si no existe cadena de frío.</p>
+          <div class="agy-prop-row"><span class="agy-prop-key">Modelo / Teoría</span><span class="agy-prop-val">Modelo Empírico de Pérdidas Físicas y Calidad en Pesquerías Artesanales Tropicales de la FAO (<em>FAO Fisheries Technical Paper 348</em>).</span></div>
+          <div class="agy-prop-row"><span class="agy-prop-key">Algoritmo / Enfoque computacional</span><span class="agy-prop-val">Evaluación de Peor Caso en Redes de Transporte (<em>Worst-Case Path Analysis</em>) en grafos dirigidos.</span></div>
+          <div class="agy-prop-row"><span class="agy-prop-key">Estándar FAO</span><span class="agy-prop-val">La FAO establece que en pesquerías tropicales sin hielo se pierde entre el <strong>30% y el 40%</strong> del producto por putrefacción e histamina.</span></div>
+          <div class="agy-prop-row"><span class="agy-prop-key">Caso crítico del proyecto</span><span class="agy-prop-val" style="color:var(--color-ember-accent);">Corresponde a la asociación más lejana (<strong>P05 Puerto Trujillo a 65 km</strong>), cuyo viaje sin refrigeración supera las 9.5 horas y roza exactamente ese 40% de pérdida individual.</span></div>
+        </div>
+
+        <div class="agy-prop-group" style="margin:0;">
+          <h4><span>2. La Pérdida de 2.5%/h a Temperatura Ambiente (30 °C)</span><span>Cinética de Arrhenius</span></h4>
+          <p style="font-size:13.5px;margin:6px 0;">Por cada hora que el pescado pasa sin hielo bajo el calor de Puerto Gaitán (30 °C), se descompone y pierde el <strong>2.5%</strong> de su masa muscular útil.</p>
+          <div class="agy-prop-row"><span class="agy-prop-key">Modelo / Teoría</span><span class="agy-prop-val">Modelo de Cinética Enzimática y Velocidad Relativa de Deterioro de Spencer &amp; Baines / Regla de Arrhenius aplicada a Alimentos (FAO Doc. Técnico 348, Cap. 6.1).</span></div>
+          <div class="agy-prop-row"><span class="agy-prop-key">Algoritmo / Función en código</span><span class="agy-prop-val"><code>calcular_deterioro()</code> en <code>src/utils/geo_utils.py</code> y <code>TASA_DETERIORO_BASE = 2.5</code> en <code>constants.py</code>.</span></div>
+          <div class="agy-tex-block">
+            <span class="agy-tex">
+              <var>f</var><sub>temp</sub> <span class="agy-op">=</span> 1.0 <span class="agy-op">+</span>
+              <span class="agy-frac"><span class="agy-frac-num"><var>T</var><sub>ambiente</sub></span><span class="agy-frac-den">10.0</span></span>
+              <span class="agy-op">=</span> 1.0 <span class="agy-op">+</span>
+              <span class="agy-frac"><span class="agy-frac-num">30.0</span><span class="agy-frac-den">10.0</span></span>
+              <span class="agy-op">=</span> 4.0
+            </span>
+            <span class="agy-tex">
+              <var>D</var>(<var>t</var>) <span class="agy-op">=</span> <var>k</var><sub>base</sub> <span class="agy-op">&times;</span> <var>t</var> <span class="agy-op">&times;</span>
+              <span>(</span><span class="agy-frac"><span class="agy-frac-num"><var>f</var><sub>temp</sub></span><span class="agy-frac-den">4.0</span></span><span>)</span>
+              <span class="agy-op">=</span> 2.5 <span class="agy-op">&times;</span> <var>t</var> <span class="agy-op">&times;</span>
+              <span>(</span><span class="agy-frac"><span class="agy-frac-num">4.0</span><span class="agy-frac-den">4.0</span></span><span>)</span>
+              <span class="agy-op">=</span> 2.5% <span class="agy-op">&times;</span> <var>t</var>
+            </span>
+          </div>
+        </div>
+
+        <div class="agy-prop-group" style="margin:0;">
+          <h4><span>3. La Pérdida de 3.75%/h en Zonas D y qué son las Zonas D</span><span>Cuellos de Botella</span></h4>
+          <p style="font-size:13.5px;margin:6px 0;">Las Zonas D son <strong>Zonas de Deterioro Crítico</strong> (<code>D01</code> Paso Río Iteviare y <code>D02</code> Cruce La Culebra): puntos geográficos descubiertos donde las embarcaciones o vehículos sufren estancamiento bajo el sol directo sin sombra ni ventilación.</p>
+          <div class="agy-prop-row"><span class="agy-prop-key">Modelo / Teoría</span><span class="agy-prop-val">Modelo de Redes de Transporte con Aristas Penalizadas / Cuellos de Botella Geográficos (<em>Bottleneck Edge Weighting Model</em>).</span></div>
+          <div class="agy-prop-row"><span class="agy-prop-key">Algoritmo / Función en código</span><span class="agy-prop-val">Modificador de peso de arista en <code>SimuladorCadenaFrio.simular_ruta()</code> en <code>src/optimization/cold_chain.py</code> (<code>FACTOR_DETERIORO_ZONA_D = 1.5</code>).</span></div>
+          <div class="agy-tex-block">
+            <span class="agy-tex">
+              <var>k</var><sub>zona D</sub> <span class="agy-op">=</span> <var>k</var><sub>base</sub> <span class="agy-op">&times;</span> <var>&phi;</var><sub><i>D</i></sub> <span class="agy-op">=</span> 2.5% / h <span class="agy-op">&times;</span> 1.5 <span class="agy-op">=</span> 3.75% / h
+            </span>
+          </div>
+        </div>
+
+        <div class="agy-prop-group" style="margin:0;">
+          <h4><span>4. Hacia Bogotá se pierde el 36.1% de la carga (95.9 kg/día)</span><span>Integración Discreta en DAG</span></h4>
+          <p style="font-size:13.5px;margin:6px 0;">Es el porcentaje global de pérdida de toda la red si se intenta llevar la pesca a Bogotá sin camión refrigerado ni centro de acopio con frío:</p>
+          <div class="agy-prop-row"><span class="agy-prop-key">Modelo / Teoría</span><span class="agy-prop-val">Ecuación Diferencial Discreta de Decaimiento de Masa / Modelo de Red Multimodal en Grafos Dirigidos Acíclicos (DAG).</span></div>
+          <div class="agy-prop-row"><span class="agy-prop-key">Algoritmo / Función en código</span><span class="agy-prop-val"><code>SimuladorCadenaFrio.simular_ruta()</code> integrando paso a paso sobre el camino mínimo de Dijkstra.</span></div>
+          <div class="agy-tex-block">
+            <span class="agy-tex">
+              <var>&Delta;Q</var><sub><i>i</i></sub> <span class="agy-op">=</span> <var>Q</var><sub>actual</sub> <span class="agy-op">&times;</span>
+              <span>(</span><span class="agy-frac"><span class="agy-frac-num"><var>D</var><sub>tramo, <i>i</i></sub></span><span class="agy-frac-den">100</span></span><span>)</span>
+              &nbsp;&nbsp;&rarr;&nbsp;&nbsp;
+              <var>Q</var><sub>actual</sub> <span class="agy-op">&larr;</span> <var>Q</var><sub>actual</sub> <span class="agy-op">&minus;</span> <var>&Delta;Q</var><sub><i>i</i></sub>
+            </span>
+            <span class="agy-tex">
+              <var>P</var><sub>Bogotá</sub> <span class="agy-op">=</span>
+              <span class="agy-frac"><span class="agy-frac-num">95.9 kg perdidos</span><span class="agy-frac-den">265.75 kg capturados</span></span>
+              <span class="agy-op">&times;</span> 100% <span class="agy-op">=</span> 36.1%
+            </span>
+          </div>
+        </div>
+
+        <div class="agy-prop-group" style="margin:0;">
+          <h4><span>5. Los $1,151,000 COP/día en merma ($34.5M COP/mes)</span><span>Valoración Económica</span></h4>
+          <p style="font-size:13.5px;margin:6px 0;">Es el dinero exacto que los pescadores pierden todos los días por el pescado que se les pudre en el camino.</p>
+          <div class="agy-prop-row"><span class="agy-prop-key">Modelo / Teoría</span><span class="agy-prop-val">Modelo de Valoración Económica de Costos de Pérdida en Cadena de Suministro (<em>Supply Chain Spoilage Cost Model</em>).</span></div>
+          <div class="agy-prop-row"><span class="agy-prop-key">Algoritmo / Función en código</span><span class="agy-prop-val">Evaluación de función de costo objetivo <span class="agy-tex"><var>C</var><sub>merma</sub> <span class="agy-op">=</span> <span class="agy-sum">&Sigma;</span> (<var>&Delta;Q</var> <span class="agy-op">&times;</span> <var>c</var><sub>unit</sub>)</span> en <code>cold_chain.py</code> (Línea 193).</span></div>
+          <div class="agy-tex-block">
+            <span class="agy-tex">
+              <var>C</var><sub>merma</sub> <span class="agy-op">=</span> <span class="agy-sum">&Sigma;</span> (<var>&Delta;Q</var> <span class="agy-op">&times;</span> <var>c</var><sub>unit</sub>) <span class="agy-op">=</span> 95.9 kg/día <span class="agy-op">&times;</span> $12,000 COP/kg <span class="agy-op">=</span> $1,150,800 COP/día <span class="agy-op">&approx;</span> $1,151,000 COP/día
+            </span>
+          </div>
+        </div>
+      </div>
+    `
+  }},
+  kpi_fao: {{
+    tag: "INDICADOR MAESTRO 3 · LÍMITE SANITARIO FAO DE 4.0 h (240 min) — RIESGO HISTAMINA",
+    titulo: "Directrices Codex Alimentarius (FAO/OMS) y Algoritmo Dijkstra con Poda TCSPP",
+    cuerpo: `
+      <p>Es el <strong>tiempo máximo absoluto</strong> que puede transcurrir desde que el pez sale del agua hasta que su temperatura interna baja a <strong>0 °C</strong> (mediante hielo 1:1 o centro frigorífico).</p>
+      <div class="agy-prop-group" style="margin-top:14px;">
+        <h4><span>Fundamentación Científica, Normativa y Computacional</span><span>Codex CAC/RCP 52-2003</span></h4>
+        <div class="agy-prop-row"><span class="agy-prop-key">Modelo / Teoría</span><span class="agy-prop-val">Directrices de Inocuidad y Microbiología de Alimentos Marinos del <em>Codex Alimentarius</em> (FAO/OMS) y la FDA (<em>Code of Practice for Fish and Fishery Products, CAC/RCP 52-2003</em>).</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Algoritmo / Enfoque computacional</span><span class="agy-prop-val">Algoritmo de Camino Más Corto Restringido por Tiempo (<em>Time-Constrained Shortest Path Problem — TCSPP</em>) implementado sobre Dijkstra con poda de aristas en tiempo real (<span class="agy-tex"><var>t</var><sub>sin frío</sub> <span class="agy-op">&le;</span> 4.0 h</span>) en <code>dijkstra_con_cota_inocuidad()</code>.</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Fundamento biológico</span><span class="agy-prop-val">A 30 °C, las bacterias entéricas (<em>Morganella morganii</em>, <em>Klebsiella pneumoniae</em>) activan la enzima <strong>histidina descarboxilasa</strong>, convirtiendo la histidina del músculo de la cachama en <strong>histamina</strong>. Causa intoxicación escombroide grave y es <strong>termoestable</strong> (no se destruye cocinando ni congelando después). Superar 4.0 h convierte el lote en residuo biológico tóxico.</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Cifra en la línea base</span><span class="agy-prop-val" style="color:var(--color-ember-accent);">Sin centros de frío en Puerto Gaitán, el transporte hacia mercados mayoristas alcanza hasta <strong>9.48 h (569 minutos)</strong>, superando el límite de la FAO en un <strong>237%</strong> y causando un incumplimiento sanitario del 100% en rutas largas.</span></div>
+      </div>
+    `
+  }},
+  kpi_aislamiento: {{
+    tag: "INDICADOR MAESTRO 4 · LOS 63.0 km DE AISLAMIENTO FLUVIAL CRÍTICO (P05 ITEVIARE)",
+    titulo: "Desglose Multimodal Tramo a Tramo de la Comunidad Más Vulnerable (40 Familias)",
+    cuerpo: `
+      <p>Es la distancia física y cuello de botella geográfico más severo de toda la red pesquera de Puerto Gaitán, correspondiente a <strong>P05 Puerto Trujillo</strong> (40 familias de pescadores en frontera fluvial sobre el Río Iteviare).</p>
+      <div class="agy-prop-group" style="margin-top:12px;">
+        <h4><span>Modelo Geodésico y Algoritmo de Optimización</span><span>WGS 84 + Haversine</span></h4>
+        <div class="agy-prop-row"><span class="agy-prop-key">Modelo / Teoría</span><span class="agy-prop-val">Modelo de Red Multimodal Fluvial-Terrestre Georreferenciada (WGS 84) con penalizaciones por cambio de modo y topología de cuencas aisladas.</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Algoritmo / Enfoque computacional</span><span class="agy-prop-val">Algoritmo de Dijkstra Multicriterio con Distancia Geodésica de Haversine y penalización cinemática por transbordo.</span></div>
+      </div>
+
+      <div style="overflow-x:auto;margin-top:14px;">
+        <table class="agy-table" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:9px 12px;">Tramo Dirigido (<span class="agy-tex"><var>u</var> <span class="agy-op">&rarr;</span> <var>v</var></span>)</th>
+              <th style="text-align:left;padding:9px 12px;">Modo / Tipo de Vía</th>
+              <th style="text-align:right;padding:9px 12px;">Distancia</th>
+              <th style="text-align:right;padding:9px 12px;">Tiempo Puro</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding:9px 12px;"><strong>P05 (Puerto Trujillo) &rarr; A03 (Acopio Iteviare)</strong></td>
+              <td style="padding:9px 12px;color:#2997ff;">Fluvial (Río Iteviare)</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">3.0 km</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">0.20 h</td>
+            </tr>
+            <tr>
+              <td style="padding:9px 12px;"><strong>A03 &rarr; D01 (Paso Crítico Río Iteviare)</strong></td>
+              <td style="padding:9px 12px;color:var(--color-saffron-spark);">Terrestre destapado</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">30.0 km</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">1.20 h</td>
+            </tr>
+            <tr>
+              <td style="padding:9px 12px;"><strong>D01 &rarr; M02 (Muelle Manacacías Sur)</strong></td>
+              <td style="padding:9px 12px;color:var(--color-ember-accent);">Trocha mala (&times;1.5 deterioro)</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">8.0 km</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">0.40 h</td>
+            </tr>
+            <tr>
+              <td style="padding:9px 12px;"><strong>M02 &rarr; A01 (Acopio San Miguel)</strong></td>
+              <td style="padding:9px 12px;">Vía veredal (+0.25 h transbordo)</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">6.0 km</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">0.25 h</td>
+            </tr>
+            <tr>
+              <td style="padding:9px 12px;"><strong>A01 &rarr; F02 (Centro Frío Puerto Gaitán)</strong></td>
+              <td style="padding:9px 12px;color:#10b981;">Carretera secundaria</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">15.0 km</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">0.60 h</td>
+            </tr>
+            <tr>
+              <td style="padding:9px 12px;"><strong>F02 &rarr; V_PG1 (Llanofish Puerto Gaitán)</strong></td>
+              <td style="padding:9px 12px;color:#10b981;">Casco urbano pavimentado</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">1.0 km</td>
+              <td style="padding:9px 12px;text-align:right;font-family:var(--font-mono);">0.05 h</td>
+            </tr>
+            <tr style="border-top:2px solid var(--color-saffron-spark);background:rgba(255,184,41,0.08);">
+              <td style="padding:10px 12px;"><strong>TOTAL RUTA P05 &rarr; V_PG1</strong></td>
+              <td style="padding:10px 12px;"><strong>6 Segmentos Multimodales</strong></td>
+              <td style="padding:10px 12px;text-align:right;font-family:var(--font-mono);font-weight:800;color:var(--color-saffron-spark);">63.0 km</td>
+              <td style="padding:10px 12px;text-align:right;font-family:var(--font-mono);font-weight:800;color:var(--color-saffron-spark);">2.70 h</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="agy-tex-block">
+        <span class="agy-tex">
+          <var>d</var><sub>total</sub> <span class="agy-op">=</span> 3.0 <span class="agy-op">+</span> 30.0 <span class="agy-op">+</span> 8.0 <span class="agy-op">+</span> 6.0 <span class="agy-op">+</span> 15.0 <span class="agy-op">+</span> 1.0 <span class="agy-op">=</span> 63.0 km
+        </span>
+        <span class="agy-tex">
+          <var>t</var><sub>mov</sub> <span class="agy-op">=</span> 0.20 <span class="agy-op">+</span> 1.20 <span class="agy-op">+</span> 0.40 <span class="agy-op">+</span> 0.25 <span class="agy-op">+</span> 0.60 <span class="agy-op">+</span> 0.05 <span class="agy-op">=</span> 2.70 h
+        </span>
+      </div>
+
+      <div class="agy-prop-group" style="margin-top:14px;">
+        <h4><span>Efecto de Cuello de Botella y Salvamento con Centro F02</span><span><span class="agy-tex">2.95 h <span class="agy-op">&le;</span> 4.0 h</span></span></h4>
+        <div class="agy-prop-row"><span class="agy-prop-key">1. Transbordo en Muelle (M02)</span><span class="agy-prop-val">Penalización obligatoria de <span class="agy-tex">+0.25 h</span> (15 minutos) de espera al sol directo (<code>TIEMPO_TRANSBORDO_MUELLE_H</code>).</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">2. Paso por Zona Crítica (D01)</span><span class="agy-prop-val">La tasa de deterioro se multiplica por <span class="agy-tex"><var>&phi;</var><sub><i>D</i></sub> <span class="agy-op">=</span> 1.5</span> (<span class="agy-tex">3.75% / h</span>).</span></div>
+        <div class="agy-prop-row"><span class="agy-prop-key">Resultado con apertura de F02</span><span class="agy-prop-val" style="color:#10b981;">El tiempo acumulado sin frío llega a <span class="agy-tex">2.95 h</span>, demostrando que la apertura de F02 salva el producto dentro del umbral sanitario (<span class="agy-tex">2.95 h <span class="agy-op">&le;</span> 4.0 h</span>).</span></div>
+      </div>
+    `
+  }},
   prob1: {{
     tag: "PROBLEMA 1 · CINÉTICA TÉRMICA (LÍNEA BASE SIN SOLUCIÓN)",
     titulo: "Degradación Enzimática y Pérdida Poscaptura a 30 °C (Hasta 40%)",
@@ -3737,17 +5119,17 @@ const AGY_MODALES_INFO = {{
     tag: "TEORÍA 1 · GRAFOS DIRIGIDOS PONDERADOS Y TABLAS HASH O(1)",
     titulo: "Por qué Lista de Adyacencia sobre Tablas Hash y no Matriz Densa",
     cuerpo: `
-      <p><strong>1. ¿Qué es la teoría?</strong> Un grafo dirigido ponderado $G=(V,E,w)$ modela entidades como vértices $V$ y relaciones asimétricas con costo como aristas dirigidas $E \\subseteq V \\times V$. Una <strong>Tabla Hash</strong> mapea claves (<code>id_nodo</code>) a direcciones de memoria mediante una función de dispersión en tiempo constante <strong>O(1)</strong>.</p>
+      <p><strong>1. ¿Qué es la teoría?</strong> Un grafo dirigido ponderado <span class="agy-tex"><var>G</var> <span class="agy-op">=</span> (<var>V</var>, <var>E</var>, <var>w</var>)</span> modela entidades como vértices <span class="agy-tex"><var>V</var></span> y relaciones asimétricas con costo como aristas dirigidas <span class="agy-tex"><var>E</var> <span class="agy-op">&sube;</span> <var>V</var> <span class="agy-op">&times;</span> <var>V</var></span>. Una <strong>Tabla Hash</strong> mapea claves (<code>id_nodo</code>) a direcciones de memoria mediante una función de dispersión en tiempo constante <span class="agy-tex"><var>O</var>(1)</span>.</p>
       <p><strong>2. ¿Cómo lo implementa el programa?</strong> En <code>src/models/grafo_logistico.py</code>, <code>GrafoLogistico</code> utiliza dos diccionarios Hash nativos: <code>_nodos: Dict[str, Nodo]</code> y <code>_adyacencia: Dict[str, List[Arista]]</code>.</p>
-      <p><strong>3. Defensa ante el jurado (¿Por qué así y no con Matriz 25×25?):</strong> En nuestro grafo hay $25$ nodos ($25 \\times 24 = 600$ pares posibles) pero solo $41$ aristas reales (<strong>densidad del 6.8%</strong>), y en <code>RedFluvial</code> hay $12,413$ vértices (una matriz ocuparía $1.2\\text{{ GB}}$ de RAM con $99.98\\%$ de infinitos). Con Lista de Adyacencia Hash recorremos únicamente los vecinos reales en $O(\\text{{grado}}(u))$ y usamos menos de $50\\text{{ KB}}$.</p>
+      <p><strong>3. Defensa ante el jurado (¿Por qué así y no con Matriz 25×25?):</strong> En nuestro grafo hay <span class="agy-tex">25</span> nodos (<span class="agy-tex">25 <span class="agy-op">&times;</span> 24 <span class="agy-op">=</span> 600</span> pares posibles) pero solo <span class="agy-tex">41</span> aristas reales (<strong>densidad del 6.8%</strong>), y en <code>RedFluvial</code> hay <span class="agy-tex">12,413</span> vértices (una matriz ocuparía <span class="agy-tex">1.2 GB</span> de RAM con <span class="agy-tex">99.98%</span> de infinitos). Con Lista de Adyacencia Hash recorremos únicamente los vecinos reales en <span class="agy-tex"><var>O</var>(grado(<var>u</var>))</span> y usamos menos de <span class="agy-tex">50 KB</span>.</p>
     `
   }},
   teo2: {{
     tag: "TEORÍA 2 · MONTÍCULO BINARIO (MIN-HEAP) Y PODA BRANCH & BOUND",
     titulo: "Algoritmo de Dijkstra O((V+E) log V) y Poda Dura de Inocuidad FAO",
     cuerpo: `
-      <p><strong>1. ¿Qué es la teoría?</strong> Un <strong>Montículo Binario (Min-Heap)</strong> es un árbol binario completo almacenado en un arreglo contiguo donde la clave de cada padre es menor o igual a la de sus hijos, permitiendo extraer el mínimo en $O(\\log V)$. Combinado con una estrategia <strong>Voraz (Greedy)</strong> y <strong>Ramificación y Poda (Branch &amp; Bound)</strong>, expande siempre el camino parcial más prometedor y descarta ramas inviables.</p>
-      <p><strong>2. ¿Cómo lo aplica el programa?</strong> En <code>src/algorithms/dijkstra.py</code>, <code>dijkstra()</code> halla la ruta óptima multicriterio y <code>dijkstra_con_cota_inocuidad()</code> lleva en la tupla del heap el tiempo acumulado sin frío: si al avanzar hacia un vecino $v$ el tiempo sin refrigeración supera <strong>4.0 h (240 min)</strong>, poda la rama de inmediato previniendo el riesgo de histamina.</p>
+      <p><strong>1. ¿Qué es la teoría?</strong> Un <strong>Montículo Binario (Min-Heap)</strong> es un árbol binario completo almacenado en un arreglo contiguo donde la clave de cada padre es menor o igual a la de sus hijos, permitiendo extraer el mínimo en <span class="agy-tex"><var>O</var>(log <var>V</var>)</span>. Combinado con una estrategia <strong>Voraz (Greedy)</strong> y <strong>Ramificación y Poda (Branch &amp; Bound)</strong>, expande siempre el camino parcial más prometedor y descarta ramas inviables.</p>
+      <p><strong>2. ¿Cómo lo aplica el programa?</strong> En <code>src/algorithms/dijkstra.py</code>, <code>dijkstra()</code> halla la ruta óptima multicriterio y <code>dijkstra_con_cota_inocuidad()</code> lleva en la tupla del heap el tiempo acumulado sin frío: si al avanzar hacia un vecino <span class="agy-tex"><var>v</var></span> el tiempo sin refrigeración supera <strong>4.0 h (240 min)</strong>, poda la rama de inmediato previniendo el riesgo de histamina.</p>
     `
   }},
   teo3: {{
@@ -3755,15 +5137,21 @@ const AGY_MODALES_INFO = {{
     titulo: "Bellman-Ford O(V·E) y Floyd-Warshall O(V³)",
     cuerpo: `
       <p><strong>1. ¿Qué es la teoría?</strong> La <strong>Programación Dinámica</strong> resuelve problemas mediante el principio de optimalidad de Bellman: la solución óptima global se construye relajando inductivamente subproblemas de tamaño creciente.</p>
-      <p><strong>2. Bellman-Ford (<code>src/algorithms/bellman_ford.py</code>):</strong> Relaja las $41$ aristas durante $|V|-1 = 24$ iteraciones sucesivas y ejecuta una iteración $25$ para demostrar formalmente que <code>tiene_ciclo_negativo = False</code>, coincidiendo al 100% con los tiempos de Dijkstra.</p>
-      <p><strong>3. Floyd-Warshall (<code>src/algorithms/floyd_warshall.py</code>):</strong> Aplica la recurrencia triple $D^{{(k)}}_{{ij}} = \\min(D^{{(k-1)}}_{{ij}}, D^{{(k-1)}}_{{ik}} + D^{{(k-1)}}_{{kj}})$ probando cada nodo $k \\in V$ como puente intermedio (omitiendo $k \\in H$ cuando <code>evitar_restringidos=True</code>) para precalcular la matriz $25 \\times 25$ que alimenta al optimizador FLP en $O(1)$.</p>
+      <p><strong>2. Bellman-Ford (<code>src/algorithms/bellman_ford.py</code>):</strong> Relaja las <span class="agy-tex">41</span> aristas durante <span class="agy-tex">|<var>V</var>| <span class="agy-op">&minus;</span> 1 <span class="agy-op">=</span> 24</span> iteraciones sucesivas y ejecuta una iteración <span class="agy-tex">25</span> para demostrar formalmente que <code>tiene_ciclo_negativo = False</code>, coincidiendo al 100% con los tiempos de Dijkstra.</p>
+      <p><strong>3. Floyd-Warshall (<code>src/algorithms/floyd_warshall.py</code>):</strong> Aplica la recurrencia triple:</p>
+      <div class="agy-tex-block">
+        <span class="agy-tex">
+          <var>D</var><sub><i>ij</i></sub><sup>(<i>k</i>)</sup> <span class="agy-op">=</span> min<span>(</span> <var>D</var><sub><i>ij</i></sub><sup>(<i>k</i>&minus;1)</sup> , <var>D</var><sub><i>ik</i></sub><sup>(<i>k</i>&minus;1)</sup> <span class="agy-op">+</span> <var>D</var><sub><i>kj</i></sub><sup>(<i>k</i>&minus;1)</sup> <span>)</span>
+        </span>
+      </div>
+      <p>probando cada nodo <span class="agy-tex"><var>k</var> <span class="agy-op">&in;</span> <var>V</var></span> como puente intermedio (omitiendo <span class="agy-tex"><var>k</var> <span class="agy-op">&in;</span> <var>H</var></span> cuando <code>evitar_restringidos=True</code>) para precalcular la matriz <span class="agy-tex">25 <span class="agy-op">&times;</span> 25</span> que alimenta al optimizador FLP en <span class="agy-tex"><var>O</var>(1)</span>.</p>
     `
   }},
   teo4: {{
     tag: "TEORÍA 4 · BÚSQUEDA EN AMPLITUD (BFS) Y EN PROFUNDIDAD (DFS)",
     titulo: "Exploración por Capas (Cola FIFO) y Backtracking Exhaustivo",
     cuerpo: `
-      <p><strong>1. BFS con Cola FIFO (<code>collections.deque</code> en $O(V+E)$):</strong> Explora el grafo por capas concéntricas de distancia topológica. En el proyecto determina el camino con <strong>menor número de transbordos físicos</strong> desde cada asociación hasta <code>F02</code> (evitando manipulación excesiva del pescado).</p>
+      <p><strong>1. BFS con Cola FIFO (<code>collections.deque</code> en <span class="agy-tex"><var>O</var>(<var>V</var> + <var>E</var>)</span>):</strong> Explora el grafo por capas concéntricas de distancia topológica. En el proyecto determina el camino con <strong>menor número de transbordos físicos</strong> desde cada asociación hasta <code>F02</code> (evitando manipulación excesiva del pescado).</p>
       <p><strong>2. DFS con Retroceso / Backtracking:</strong> Explora profundamente cada rama marcando nodos en el camino actual y desmarcándolos al retroceder, enumerando todas las rutas simples posibles hacia el centro de frío para contar con rutas de contingencia ante derrumbes o cierres viales.</p>
     `
   }},
@@ -3772,15 +5160,21 @@ const AGY_MODALES_INFO = {{
     titulo: "Orden Topológico de Kahn O(V+E) y Conmutación G_pesca ↔ G_veda",
     cuerpo: `
       <p><strong>1. DAG y Algoritmo de Kahn (<code>src/optimization/eca_solutions.py</code>):</strong> Cada lote pesquero (<code>ECA-2026-P01..P07</code>) se modela en <code>LoteTrazabilidadDAG</code>. El algoritmo de Kahn calcula los grados de entrada, encola en una FIFO los eventos sin dependencias previas y verifica que el historial sanitario sea 100% acíclico e inmutable para auditoría ICA/INVIMA.</p>
-      <p><strong>2. Grafo Dependiente del Tiempo $G(t)$:</strong> Modela el cambio estacional entre pesca fluvial (julio–marzo) y veda (abril–junio), conmutando los nodos fuente hacia las 3 granjas de piscicultura nativa (<code>P_PISC1..3</code>).</p>
+      <p><strong>2. Grafo Dependiente del Tiempo <span class="agy-tex"><var>G</var>(<var>t</var>)</span>:</strong> Modela el cambio estacional entre pesca fluvial (julio–marzo) y veda (abril–junio), conmutando los nodos fuente hacia las 3 granjas de piscicultura nativa (<code>P_PISC1..3</code>).</p>
     `
   }},
   teo6: {{
     tag: "TEORÍA 6 · OPTIMIZACIÓN COMBINATORIA (FACILITY LOCATION PROBLEM)",
     titulo: "Selección Voraz Constructiva (Greedy FLP) y Programación Entera (MILP)",
     cuerpo: `
-      <p><strong>1. ¿Qué es la teoría?</strong> El <strong>Facility Location Problem (FLP)</strong> busca el subconjunto óptimo de instalaciones $F' \\subseteq F$ que minimice la suma de costos fijos de apertura $\\sum f_j y_j$ más los costos de transporte y merma $\\sum c_{{ij}} x_{{ij}}$, cumpliendo cobertura sanitaria ($t \\le 4.0\\text{{ h}}$) y capacidad ($5,000\\text{{ kg}}$).</p>
-      <p><strong>2. Defensa del resultado:</strong> Evaluando los 5 escenarios con <code>EvaluadorEscenarios</code>, se demuestra que abrir <strong>únicamente F02 (Puerto Gaitán)</strong> cubre al 100% de las asociaciones en $\\le 2.20\\text{{ h}}$ y ahorra <strong>$10,000,000 COP/mes</strong> frente a abrir las 3 plantas.</p>
+      <p><strong>1. ¿Qué es la teoría?</strong> El <strong>Facility Location Problem (FLP)</strong> busca el subconjunto óptimo de instalaciones <span class="agy-tex"><var>F'</var> <span class="agy-op">&sube;</span> <var>F</var></span> que minimice la función objetivo:</p>
+      <div class="agy-tex-block">
+        <span class="agy-tex">
+          min <var>Z</var> <span class="agy-op">=</span> <span class="agy-sum">&Sigma;</span> <var>f</var><sub><i>j</i></sub> <var>y</var><sub><i>j</i></sub> <span class="agy-op">+</span> <span class="agy-sum">&Sigma;</span> <var>c</var><sub><i>ij</i></sub> <var>x</var><sub><i>ij</i></sub>
+        </span>
+      </div>
+      <p>cumpliendo cobertura sanitaria (<span class="agy-tex"><var>t</var> <span class="agy-op">&le;</span> 4.0 h</span>) y capacidad (<span class="agy-tex">5,000 kg</span>).</p>
+      <p><strong>2. Defensa del resultado:</strong> Evaluando los 5 escenarios con <code>EvaluadorEscenarios</code>, se demuestra que abrir <strong>únicamente F02 (Puerto Gaitán)</strong> cubre al 100% de las asociaciones en <span class="agy-tex"><span class="agy-op">&le;</span> 2.20 h</span> y ahorra <strong>$10,000,000 COP/mes</strong> frente a abrir las 3 plantas.</p>
     `
   }},
   externos: {{
@@ -3842,7 +5236,7 @@ function agyAbrirModalConstruccionSubgrafo() {{
       <p><strong>Orden exacto de construcción en <code>src/visualization/river_network.py</code>:</strong></p>
       <p>1.º Se cargó el shapefile oficial <code>data/shapefiles/rios.shp</code> (IGAC) recortado a la cuenca de los ríos Meta, Manacacías e Iteviare.<br>
       2.º Cada cauce se discretizó en <strong>12,413 vértices <code>(lon, lat)</code></strong> (redondeados a 5 decimales ≈ 1.1 m) y <strong>24,790 segmentos ponderados con distancia geodésica de Haversine</strong> en un grafo no dirigido (<code>RedFluvial</code>).<br>
-      3.º Se indexó el territorio en una <strong>Rejilla Espacial Hash de 447 celdas (0.05°×0.05°)</strong> para proyectar cada asociación pesquera (<code>P01..P07</code>) al cauce más cercano en $O(1)$ y trazar con Dijkstra propio las <strong>10 rutas fluviales reales</strong>.</p>
+      3.º Se indexó el territorio en una <strong>Rejilla Espacial Hash de 447 celdas (0.05°×0.05°)</strong> para proyectar cada asociación pesquera (<code>P01..P07</code>) al cauce más cercano en <span class="agy-tex"><var>O</var>(1)</span> y trazar con Dijkstra propio las <strong>10 rutas fluviales reales</strong>.</p>
     `;
   }}
   content.innerHTML = `
@@ -3868,32 +5262,32 @@ function agyActualizarSimuladorMulticriterio(edgeId) {{
   box.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
       <h3>Desglose de Arista ${{a.origen}} → ${{a.destino}} (${{a.tipo_via}})</h3>
-      <span class="agy-badge" style="color:var(--color-saffron-spark);">w_ij = ${{a.peso_combinado.toFixed(4)}}</span>
+      <span class="agy-badge" style="color:var(--color-saffron-spark);"><span class="agy-tex"><var>w</var><sub><i>ij</i></sub> <span class="agy-op">=</span> ${{a.peso_combinado.toFixed(4)}}</span></span>
     </div>
     <p style="font-size:14px;">Distancia: ${{a.distancia_km}} km · Tiempo efectivo: ${{a.tiempo_efectivo_h.toFixed(2)}} h · Costo total: $${{a.costo_total_cop.toLocaleString()}} COP · Estado: ${{a.estado_via}}</p>
     <div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>α=0.25 · Tiempo efectivo (${{a.tiempo_efectivo_h.toFixed(2)}} h)</span><span>+${{d.t_term.toFixed(4)}} (${{pct(d.t_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&alpha;</var> <span class="agy-op">=</span> 0.25</span> · Tiempo efectivo (${{a.tiempo_efectivo_h.toFixed(2)}} h)</span><span>+${{d.t_term.toFixed(4)}} (${{pct(d.t_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.t_term)}}%"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>β=0.20 · Costo total ($${{a.costo_total_cop.toLocaleString()}} COP)</span><span>+${{d.c_term.toFixed(4)}} (${{pct(d.c_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&beta;</var> <span class="agy-op">=</span> 0.20</span> · Costo total ($${{a.costo_total_cop.toLocaleString()}} COP)</span><span>+${{d.c_term.toFixed(4)}} (${{pct(d.c_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.c_term)}}%;background:#2997ff;"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>γ=0.20 · Riesgo combinado (${{a.riesgo_combinado.toFixed(3)}})</span><span>+${{d.r_term.toFixed(4)}} (${{pct(d.r_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&gamma;</var> <span class="agy-op">=</span> 0.20</span> · Riesgo combinado (<span class="agy-tex"><var>r</var><sub>comb</sub> <span class="agy-op">=</span> ${{a.riesgo_combinado.toFixed(3)}}</span>)</span><span>+${{d.r_term.toFixed(4)}} (${{pct(d.r_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.r_term)}}%;background:#ffb829;"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>δ=0.10 · Pérdida térmica (${{a.perdida_esperada.toFixed(2)}}%)</span><span>+${{d.p_term.toFixed(4)}} (${{pct(d.p_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&delta;</var> <span class="agy-op">=</span> 0.10</span> · Pérdida térmica (${{a.perdida_esperada.toFixed(2)}}%)</span><span>+${{d.p_term.toFixed(4)}} (${{pct(d.p_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.p_term)}}%;background:#dc5000;"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>ε=0.10 · Incertidumbre vial (1 - ${{a.confiabilidad_via.toFixed(2)}})</span><span>+${{d.conf_term.toFixed(4)}} (${{pct(d.conf_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&epsilon;</var> <span class="agy-op">=</span> 0.10</span> · Incertidumbre vial (<span class="agy-tex">1 <span class="agy-op">&minus;</span> <var>q</var><sub><i>ij</i></sub> <span class="agy-op">=</span> 1 <span class="agy-op">&minus;</span> ${{a.confiabilidad_via.toFixed(2)}}</span>)</span><span>+${{d.conf_term.toFixed(4)}} (${{pct(d.conf_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.conf_term)}}%;background:#15846e;"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>ζ=0.05 · Probabilidad de retraso (${{a.prob_retraso.toFixed(2)}})</span><span>+${{d.ret_term.toFixed(4)}} (${{pct(d.ret_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&zeta;</var> <span class="agy-op">=</span> 0.05</span> · Probabilidad de retraso (<span class="agy-tex"><var>P</var><sub>ret</sub> <span class="agy-op">=</span> ${{a.prob_retraso.toFixed(2)}}</span>)</span><span>+${{d.ret_term.toFixed(4)}} (${{pct(d.ret_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.ret_term)}}%;background:#ec4899;"></div></div>
       </div>
     </div>
@@ -5337,29 +6731,29 @@ function agyInspeccionarArista(a) {{
     </div>
 
     <div class="agy-prop-group">
-      <h4><span>Peso Multicriterio</span><span>w_ij = ${{a.peso_combinado.toFixed(4)}}</span></h4>
+      <h4><span>Peso Multicriterio</span><span><span class="agy-tex"><var>w</var><sub><i>ij</i></sub> <span class="agy-op">=</span> ${{a.peso_combinado.toFixed(4)}}</span></span></h4>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>α·Tiempo efectivo (0.25)</span><span>+${{d.t_term.toFixed(4)}} (${{pct(d.t_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&alpha;</var> &middot; <var>t&#770;</var><sub><i>ij</i></sub></span> Tiempo efectivo (0.25)</span><span>+${{d.t_term.toFixed(4)}} (${{pct(d.t_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.t_term)}}%"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>β·Costo total c/peajes (0.20)</span><span>+${{d.c_term.toFixed(4)}} (${{pct(d.c_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&beta;</var> &middot; <var>c&#770;</var><sub><i>ij</i></sub></span> Costo total c/peajes (0.20)</span><span>+${{d.c_term.toFixed(4)}} (${{pct(d.c_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.c_term)}}%"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>γ·Riesgo combinado (0.20)</span><span>+${{d.r_term.toFixed(4)}} (${{pct(d.r_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&gamma;</var> &middot; <var>r</var><sub>comb</sub></span> Riesgo combinado (0.20)</span><span>+${{d.r_term.toFixed(4)}} (${{pct(d.r_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.r_term)}}%"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>δ·Pérdida esperada (0.10)</span><span>+${{d.p_term.toFixed(4)}} (${{pct(d.p_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&delta;</var> &middot; <var>p&#770;</var><sub><i>ij</i></sub></span> Pérdida esperada (0.10)</span><span>+${{d.p_term.toFixed(4)}} (${{pct(d.p_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.p_term)}}%"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>ε·Incertidumbre 1-conf (0.10)</span><span>+${{d.conf_term.toFixed(4)}} (${{pct(d.conf_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&epsilon;</var> &middot; (1 <span class="agy-op">&minus;</span> <var>q</var><sub><i>ij</i></sub>)</span> Incertidumbre (0.10)</span><span>+${{d.conf_term.toFixed(4)}} (${{pct(d.conf_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.conf_term)}}%"></div></div>
       </div>
       <div class="agy-bar-wrap">
-        <div class="agy-bar-label"><span>ζ·Prob. de retraso (0.05)</span><span>+${{d.ret_term.toFixed(4)}} (${{pct(d.ret_term)}}%)</span></div>
+        <div class="agy-bar-label"><span><span class="agy-tex"><var>&zeta;</var> &middot; <var>P</var><sub>ret</sub></span> Prob. de retraso (0.05)</span><span>+${{d.ret_term.toFixed(4)}} (${{pct(d.ret_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.ret_term)}}%"></div></div>
       </div>
     </div>
