@@ -1,0 +1,26 @@
+id,nombre,tipo,tipo_descripcion,latitud,longitud,produccion_kg_dia,capacidad_frio_kg,costo_fijo,tiene_muelle,tiene_energia,tiene_agua,restriccion_ambiental
+P01,ASOPESGA - Alto Neblinas,P,Punto de Pesca,4.35,-72.12,65.75,0.0,0.0,False,True,True,False
+P02,Atarraya Verde,P,Punto de Pesca,4.33,-72.1,40.0,0.0,0.0,False,True,True,False
+P03,Asovida - San Miguel,P,Punto de Pesca,4.29,-72.06,25.0,0.0,0.0,False,True,True,False
+P04,Asopespor,P,Punto de Pesca,4.3,-72.07,20.0,0.0,0.0,False,True,True,False
+P05,Puerto Trujillo,P,Punto de Pesca,4.15,-71.5,30.0,0.0,0.0,False,True,True,False
+P06,Desembarcadero Central,P,Punto de Pesca,4.313,-72.083,50.0,0.0,0.0,False,True,True,False
+P07,Soplaviento,P,Punto de Pesca,4.34,-72.11,35.0,0.0,0.0,False,True,True,False
+F01,Centro Frío Alto Neblinas,F,Red de Frío,4.345,-72.115,0.0,2000,5000000,True,True,True,False
+F02,Centro Frío Puerto Gaitán,F,Red de Frío,4.3128,-72.0826,0.0,5000,3000000,True,True,True,False
+A01,Acopio San Miguel,A,Centro de Acopio,4.29,-72.06,0.0,1000,2500000,False,True,True,False
+A02,Acopio Río Manacacías,A,Centro de Acopio,4.335,-72.105,0.0,1500,3500000,True,True,True,False
+F03,Centro Frío Puerto López,F,Red de Frío,4.0862,-72.955,0.0,4000,4500000,True,True,True,False
+A03,Acopio Puerto Trujillo,A,Centro de Acopio,4.15,-71.5,0.0,800,2000000,True,False,True,False
+M01,Muelle Río Meta Alto,M,Muelle,4.1298,-72.1088,0.0,0,0,True,False,True,False
+M02,Muelle Río Meta Central,M,Muelle,4.168,-72.105,0.0,0,0,True,False,True,False
+M03,Muelle Puerto Gaitán,M,Muelle,4.313,-72.083,0.0,0,0,True,True,True,False
+D01,Zona Deterioro Térmico Ruta Sur,D,Zona de Deterioro,4.115,-72.055,0.0,0,0,False,False,False,False
+D02,Zona Deterioro Ruta Meta,D,Zona de Deterioro,4.2446,-72.068,0.0,0,0,False,False,False,False
+H01,Hábitat Protegido Río Meta,H,Hábitat Protegido,4.286,-72.043,0.0,0,0,False,False,False,True
+H02,Hábitat Protegido Manacacías,H,Hábitat Protegido,4.3559,-72.0504,0.0,0,0,False,False,False,True
+V_PG1,Llanofish Fishing Store,V,Lugar de Venta,4.312,-72.0835,0.0,0.0,0.0,False,True,True,False
+V_PG2,Tienda El Pavón,V,Lugar de Venta,4.3135,-72.082,0.0,0.0,0.0,False,True,True,False
+V_VLL,Amigos de la Pesca,V,Lugar de Venta,4.1387,-73.631,0.0,0.0,0.0,False,True,True,False
+V_BOG1,Buceo y Pesca,V,Lugar de Venta,4.6615,-74.059,0.0,0.0,0.0,False,True,True,False
+V_BOG2,Aqualand Sports,V,Lugar de Venta,4.682,-74.072,0.0,0.0,0.0,False,True,True,False

@@ -1,0 +1,575 @@
+{
+  "type": "FeatureCollection",
+  "name": "Red Logística Pesquera — Puerto Gaitán, Meta",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.12,
+          4.35
+        ]
+      },
+      "properties": {
+        "id": "P01",
+        "nombre": "ASOPESGA - Alto Neblinas",
+        "tipo_nodo": "P",
+        "tipo_descripcion": "Punto de Pesca",
+        "capacidad": 65.75,
+        "produccion_kg_dia": 65.75,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "rio_asociado": "Río Manacacías",
+        "num_pescadores": 14
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.1,
+          4.33
+        ]
+      },
+      "properties": {
+        "id": "P02",
+        "nombre": "Atarraya Verde",
+        "tipo_nodo": "P",
+        "tipo_descripcion": "Punto de Pesca",
+        "capacidad": 40.0,
+        "produccion_kg_dia": 40.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "rio_asociado": "Río Manacacías",
+        "num_pescadores": 20
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.06,
+          4.29
+        ]
+      },
+      "properties": {
+        "id": "P03",
+        "nombre": "Asovida - San Miguel",
+        "tipo_nodo": "P",
+        "tipo_descripcion": "Punto de Pesca",
+        "capacidad": 25.0,
+        "produccion_kg_dia": 25.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "rio_asociado": "Río Meta",
+        "num_pescadores": 11
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.07,
+          4.3
+        ]
+      },
+      "properties": {
+        "id": "P04",
+        "nombre": "Asopespor",
+        "tipo_nodo": "P",
+        "tipo_descripcion": "Punto de Pesca",
+        "capacidad": 20.0,
+        "produccion_kg_dia": 20.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "rio_asociado": "Río Meta",
+        "num_pescadores": 10
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -71.5,
+          4.15
+        ]
+      },
+      "properties": {
+        "id": "P05",
+        "nombre": "Puerto Trujillo",
+        "tipo_nodo": "P",
+        "tipo_descripcion": "Punto de Pesca",
+        "capacidad": 30.0,
+        "produccion_kg_dia": 30.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "rio_asociado": "Río Iteviare",
+        "num_pescadores": 40
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.083,
+          4.313
+        ]
+      },
+      "properties": {
+        "id": "P06",
+        "nombre": "Desembarcadero Central",
+        "tipo_nodo": "P",
+        "tipo_descripcion": "Punto de Pesca",
+        "capacidad": 50.0,
+        "produccion_kg_dia": 50.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "rio_asociado": "Río Meta",
+        "num_pescadores": 25
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.11,
+          4.34
+        ]
+      },
+      "properties": {
+        "id": "P07",
+        "nombre": "Soplaviento",
+        "tipo_nodo": "P",
+        "tipo_descripcion": "Punto de Pesca",
+        "capacidad": 35.0,
+        "produccion_kg_dia": 35.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "rio_asociado": "Río Manacacías",
+        "num_pescadores": 8
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.115,
+          4.345
+        ]
+      },
+      "properties": {
+        "id": "F01",
+        "nombre": "Centro Frío Alto Neblinas",
+        "tipo_nodo": "F",
+        "tipo_descripcion": "Red de Frío",
+        "capacidad": 2000,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 2000,
+        "costo_fijo": 5000000,
+        "tiene_energia": true,
+        "tiene_muelle": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.0826,
+          4.3128
+        ]
+      },
+      "properties": {
+        "id": "F02",
+        "nombre": "Centro Frío Puerto Gaitán",
+        "tipo_nodo": "F",
+        "tipo_descripcion": "Red de Frío",
+        "capacidad": 5000,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 5000,
+        "costo_fijo": 3000000,
+        "tiene_energia": true,
+        "tiene_muelle": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.06,
+          4.29
+        ]
+      },
+      "properties": {
+        "id": "A01",
+        "nombre": "Acopio San Miguel",
+        "tipo_nodo": "A",
+        "tipo_descripcion": "Centro de Acopio",
+        "capacidad": 1000,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 1000,
+        "costo_fijo": 2500000,
+        "tiene_energia": true,
+        "tiene_muelle": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.105,
+          4.335
+        ]
+      },
+      "properties": {
+        "id": "A02",
+        "nombre": "Acopio Río Manacacías",
+        "tipo_nodo": "A",
+        "tipo_descripcion": "Centro de Acopio",
+        "capacidad": 1500,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 1500,
+        "costo_fijo": 3500000,
+        "tiene_energia": true,
+        "tiene_muelle": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.955,
+          4.0862
+        ]
+      },
+      "properties": {
+        "id": "F03",
+        "nombre": "Centro Frío Puerto López",
+        "tipo_nodo": "F",
+        "tipo_descripcion": "Red de Frío",
+        "capacidad": 4000,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 4000,
+        "costo_fijo": 4500000,
+        "tiene_energia": true,
+        "tiene_muelle": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -71.5,
+          4.15
+        ]
+      },
+      "properties": {
+        "id": "A03",
+        "nombre": "Acopio Puerto Trujillo",
+        "tipo_nodo": "A",
+        "tipo_descripcion": "Centro de Acopio",
+        "capacidad": 800,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 800,
+        "costo_fijo": 2000000,
+        "tiene_energia": false,
+        "tiene_muelle": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.1088,
+          4.1298
+        ]
+      },
+      "properties": {
+        "id": "M01",
+        "nombre": "Muelle Río Meta Alto",
+        "tipo_nodo": "M",
+        "tipo_descripcion": "Muelle",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0,
+        "costo_fijo": 0,
+        "tiene_energia": false,
+        "tiene_muelle": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.105,
+          4.168
+        ]
+      },
+      "properties": {
+        "id": "M02",
+        "nombre": "Muelle Río Meta Central",
+        "tipo_nodo": "M",
+        "tipo_descripcion": "Muelle",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0,
+        "costo_fijo": 0,
+        "tiene_energia": false,
+        "tiene_muelle": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.083,
+          4.313
+        ]
+      },
+      "properties": {
+        "id": "M03",
+        "nombre": "Muelle Puerto Gaitán",
+        "tipo_nodo": "M",
+        "tipo_descripcion": "Muelle",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0,
+        "costo_fijo": 0,
+        "tiene_energia": true,
+        "tiene_muelle": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.055,
+          4.115
+        ]
+      },
+      "properties": {
+        "id": "D01",
+        "nombre": "Zona Deterioro Térmico Ruta Sur",
+        "tipo_nodo": "D",
+        "tipo_descripcion": "Zona de Deterioro",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0,
+        "costo_fijo": 0,
+        "tiene_energia": false,
+        "tiene_muelle": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.068,
+          4.2446
+        ]
+      },
+      "properties": {
+        "id": "D02",
+        "nombre": "Zona Deterioro Ruta Meta",
+        "tipo_nodo": "D",
+        "tipo_descripcion": "Zona de Deterioro",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0,
+        "costo_fijo": 0,
+        "tiene_energia": false,
+        "tiene_muelle": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.043,
+          4.286
+        ]
+      },
+      "properties": {
+        "id": "H01",
+        "nombre": "Hábitat Protegido Río Meta",
+        "tipo_nodo": "H",
+        "tipo_descripcion": "Hábitat Protegido",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0,
+        "costo_fijo": 0,
+        "tiene_energia": false,
+        "tiene_muelle": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.0504,
+          4.3559
+        ]
+      },
+      "properties": {
+        "id": "H02",
+        "nombre": "Hábitat Protegido Manacacías",
+        "tipo_nodo": "H",
+        "tipo_descripcion": "Hábitat Protegido",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0,
+        "costo_fijo": 0,
+        "tiene_energia": false,
+        "tiene_muelle": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.0835,
+          4.312
+        ]
+      },
+      "properties": {
+        "id": "V_PG1",
+        "nombre": "Llanofish Fishing Store",
+        "tipo_nodo": "V",
+        "tipo_descripcion": "Lugar de Venta",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "demanda_kg_dia": 80
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -72.082,
+          4.3135
+        ]
+      },
+      "properties": {
+        "id": "V_PG2",
+        "nombre": "Tienda El Pavón",
+        "tipo_nodo": "V",
+        "tipo_descripcion": "Lugar de Venta",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "demanda_kg_dia": 60
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.631,
+          4.1387
+        ]
+      },
+      "properties": {
+        "id": "V_VLL",
+        "nombre": "Amigos de la Pesca",
+        "tipo_nodo": "V",
+        "tipo_descripcion": "Lugar de Venta",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "demanda_kg_dia": 300
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.059,
+          4.6615
+        ]
+      },
+      "properties": {
+        "id": "V_BOG1",
+        "nombre": "Buceo y Pesca",
+        "tipo_nodo": "V",
+        "tipo_descripcion": "Lugar de Venta",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "demanda_kg_dia": 400
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.072,
+          4.682
+        ]
+      },
+      "properties": {
+        "id": "V_BOG2",
+        "nombre": "Aqualand Sports",
+        "tipo_nodo": "V",
+        "tipo_descripcion": "Lugar de Venta",
+        "capacidad": 0.0,
+        "produccion_kg_dia": 0.0,
+        "capacidad_frio_kg": 0.0,
+        "costo_fijo": 0.0,
+        "tiene_energia": true,
+        "tiene_muelle": false,
+        "demanda_kg_dia": 500
+      }
+    }
+  ]
+}

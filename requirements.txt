@@ -6,12 +6,14 @@
 matplotlib>=3.7         # Visualización del grafo (graph_plotter.py)
 numpy>=1.24             # Matrices para Floyd-Warshall
 folium>=0.14            # Mapa interactivo HTML (folium_map.py)
+geopandas>=0.13         # Lectura de shapefiles de ríos (river_network.py, data_loader.py)
+shapely>=2.0            # Geometrías y recortes para rutas fluviales (river_network.py)
+pyproj>=3.5             # Proyecciones geográficas WGS 84
 
 # === Testing ===
-pytest>=7.4             # Ejecutar las 30 pruebas unitarias
+pytest>=7.4             # Ejecutar las pruebas unitarias
 
-# === Opcionales (mejoran funcionalidades extra) ===
-# geopandas>=0.13       # Capa de ríos en el mapa (shapefile → GeoJSON)
-# shapely>=2.0          # Geometrías para rutas fluviales
-# fiona>=1.9            # Backend de lectura de shapefiles
-# pyproj>=3.5           # Proyecciones geográficas
+# === Opcionales (funcionalidades extendidas) ===
+# networkx>=3.0         # Exportación opcional a NetworkX (grafo_logistico.py)
+# pulp>=2.7             # Solucionador MILP exacto opcional (facility_location.py)
+# fiona>=1.9            # Backend alternativo de lectura de shapefiles

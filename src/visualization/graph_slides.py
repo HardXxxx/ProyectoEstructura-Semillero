@@ -31,12 +31,14 @@ from ..algorithms.dijkstra import dijkstra
 from ..algorithms.bellman_ford import bellman_ford
 from ..algorithms.floyd_warshall import floyd_warshall, reconstruir_camino
 from ..optimization.facility_location import resolver_localizacion
+from ..optimization.cold_chain import SimuladorCadenaFrio
 from ..optimization.scenario_evaluator import EvaluadorEscenarios
 from ..optimization.itinerarios import calcular_itinerarios
 from ..optimization.eca_solutions import ejecutar_suite_eca
 from ..utils.constants import (
     ALPHA, BETA, GAMMA, DELTA, EPSILON, ZETA,
     TIEMPO_MAX_SIN_FRIO_H, TIEMPO_TRANSBORDO_MUELLE_H, FACTOR_DETERIORO_ZONA_D,
+    COSTO_FIJO_CENTRO_FRIO, TEMP_AMBIENTE_LLANOS_C, VIDA_UTIL_HORAS, COSTO_PERDIDA_KG,
 )
 from ..utils.data_loader import DATA_DIR, OUTPUT_DIR
 
@@ -462,9 +464,15 @@ def construir_datos_slides(
                 "num_centros": m.num_centros,
                 "centros_ids": m.centros_ids,
                 "pct_perdida": round(m.pct_perdida, 2),
-                "kg_perdido": round(m.kg_perdido, 1),
+                "kg_perdido": round(m.kg_perdido, 2),
+                "kg_total": round(m.kg_total_transportado, 2),
+                "costo_transporte_cop": round(m.costo_transporte_cop, 0),
+                "costo_centros_cop": round(m.costo_centros_cop, 0),
+                "costo_perdida_cop": round(m.costo_perdida_cop, 0),
                 "costo_total_cop": round(m.costo_total_cop, 0),
                 "costo_por_kg_cop": round(m.costo_por_kg_cop, 0),
+                "cobertura_pesca_pct": round(m.cobertura_pesca_pct, 1),
+                "tiempo_max_sin_frio_h": round(m.tiempo_max_sin_frio_h, 2),
                 "cumplimiento_termico_pct": round(m.cumplimiento_termico_pct, 1),
             })
         for m in ev.comparar_escenarios(defs_esc, "V_BOG1"):
@@ -473,9 +481,15 @@ def construir_datos_slides(
                 "num_centros": m.num_centros,
                 "centros_ids": m.centros_ids,
                 "pct_perdida": round(m.pct_perdida, 2),
-                "kg_perdido": round(m.kg_perdido, 1),
+                "kg_perdido": round(m.kg_perdido, 2),
+                "kg_total": round(m.kg_total_transportado, 2),
+                "costo_transporte_cop": round(m.costo_transporte_cop, 0),
+                "costo_centros_cop": round(m.costo_centros_cop, 0),
+                "costo_perdida_cop": round(m.costo_perdida_cop, 0),
                 "costo_total_cop": round(m.costo_total_cop, 0),
                 "costo_por_kg_cop": round(m.costo_por_kg_cop, 0),
+                "cobertura_pesca_pct": round(m.cobertura_pesca_pct, 1),
+                "tiempo_max_sin_frio_h": round(m.tiempo_max_sin_frio_h, 2),
                 "cumplimiento_termico_pct": round(m.cumplimiento_termico_pct, 1),
             })
     except Exception:
@@ -501,6 +515,255 @@ def construir_datos_slides(
     puntos_campo = _cargar_puntos_campo_reales()
     eca_data = ejecutar_suite_eca(grafo)
 
+    # 9. Auditoría FLP Detallada (Paso 2 & Paso 3: Origen, Filtro, Matriz Dijkstra 7×5, P05 Térmica, F02→F03)
+    flp_detallado: Dict[str, Any] = {}
+    try:
+        origenes_p = sorted(grafo.nodos_por_tipo("P"), key=lambda x: x.id)
+        oferta_tot = round(sum(p.produccion_kg_dia for p in origenes_p), 2)
+        orden_cands = ["F01", "F02", "A01", "A02", "F03"]
+        cands_validos = [grafo.obtener_nodo(cid) for cid in orden_cands if grafo.obtener_nodo(cid)]
+        cands_todos = list(cands_validos)
+        n_a03 = grafo.obtener_nodo("A03")
+        if n_a03:
+            cands_todos.append(n_a03)
+
+        provenance_coords = {
+            "F01": {
+                "origen": "Manual +0.005° (~780 m) desde P01 ASOPESGA",
+                "commit": "9af49ef (nodos_centros.csv)",
+                "regla": "Ubicación de análisis en zona norte de pesca (río Meta).",
+            },
+            "F02": {
+                "origen": "Cabecera urbana Puerto Gaitán (constants.py · PUERTO_GAITAN_COORDS)",
+                "commit": "9af49ef (nodos_centros.csv)",
+                "regla": "Nodo articulador urbano con energía trifásica y salida directa a RN 40.",
+            },
+            "F03": {
+                "origen": "Cabecera urbana Puerto López (constants.py · PUERTO_LOPEZ_COORDS)",
+                "commit": "9af49ef (nodos_centros.csv)",
+                "regla": "Nodo de relevo a 126 km al occidente sobre Ruta Nacional 40.",
+            },
+            "A01": {
+                "origen": "Mismas coordenadas exactas que P03 San Miguel (4.2900, -72.0600)",
+                "commit": "9af49ef (nodos_centros.csv)",
+                "regla": "Acopio sur (cuenca Manacacías/Iteviare) con energía eléctrica continua.",
+            },
+            "A02": {
+                "origen": "Punto medio aritmético exacto entre P02 (4.33, -72.10) y P07 (4.34, -72.11)",
+                "commit": "9af49ef (nodos_centros.csv)",
+                "regla": "Acopio norte intermedio para P01, P02, P06 y P07.",
+            },
+            "A03": {
+                "origen": "Mismas coordenadas exactas que P05 Puerto Trujillo (4.1500, -71.5000)",
+                "commit": "9af49ef (nodos_centros.csv)",
+                "regla": "DESCARTADO del FLP porque tiene_energia = 0 (sin red eléctrica estable).",
+            },
+        }
+
+        matriz_7x5 = []
+        stats_cand: Dict[str, Dict[str, Any]] = {
+            c.id: {"cubiertos": 0, "cubiertos_ids": [], "fallidos": [], "tiempos_ok": []}
+            for c in cands_validos
+        }
+        for p in origenes_p:
+            celdas = {}
+            for c in cands_validos:
+                dist_t, cam_t = dijkstra(grafo, p.id, c.id, criterio="tiempo_h", evitar_restringidos=True)
+                if cam_t and dist_t < float("inf"):
+                    t_h = round(dist_t, 2)
+                    camino = list(cam_t)
+                    tramos_c = []
+                    dist_sum = 0.0
+                    costo_sum = 0.0
+                    for idx_c in range(len(camino) - 1):
+                        ar_c = grafo.obtener_arista(camino[idx_c], camino[idx_c + 1])
+                        if ar_c:
+                            dist_sum += ar_c.distancia_km
+                            costo_sum += ar_c.costo_total_cop
+                            tramos_c.append({
+                                "u": ar_c.origen,
+                                "v": ar_c.destino,
+                                "tipo_via": ar_c.tipo_via,
+                                "tiempo_h": round(ar_c.tiempo_h, 2),
+                                "distancia_km": round(ar_c.distancia_km, 2),
+                                "costo_cop": round(ar_c.costo_total_cop, 0),
+                                "estado_via": ar_c.estado_via,
+                            })
+                    cumple = t_h <= TIEMPO_MAX_SIN_FRIO_H
+                    if cumple:
+                        stats_cand[c.id]["cubiertos"] += 1
+                        stats_cand[c.id]["cubiertos_ids"].append(p.id)
+                        stats_cand[c.id]["tiempos_ok"].append(t_h)
+                    else:
+                        stats_cand[c.id]["fallidos"].append(f"{p.id} ({t_h:.2f} h > 4.0 h)")
+                    nota = ""
+                    if p.id == "P04" and c.id in ("A01", "F02", "F03"):
+                        nota = "Desvío ecológico obligatorio: P04→H01→A01 (0.20 h) bloqueado por H01 (restriccion_ambiental=True); toma P04→A01 (0.25 h)."
+                    elif not cumple:
+                        nota = f"Supera el límite sanitario FAO ({t_h:.2f} h > {TIEMPO_MAX_SIN_FRIO_H:.1f} h): excluido de cubiertos_por_este[{c.id}]."
+                    celdas[c.id] = {
+                        "encontrado": True,
+                        "tiempo_h": t_h,
+                        "cumple_fao": cumple,
+                        "camino": camino,
+                        "dist_km": round(dist_sum, 2),
+                        "costo_cop": round(costo_sum, 0),
+                        "tramos": tramos_c,
+                        "nota": nota,
+                    }
+                else:
+                    stats_cand[c.id]["fallidos"].append(f"{p.id} (∞ sin ruta dirigida)")
+                    celdas[c.id] = {
+                        "encontrado": False,
+                        "tiempo_h": None,
+                        "cumple_fao": False,
+                        "camino": [],
+                        "dist_km": 0.0,
+                        "costo_cop": 0.0,
+                        "tramos": [],
+                        "nota": f"Sin camino dirigido hacia {c.id} en el grafo G=(V,E).",
+                    }
+            matriz_7x5.append({
+                "origen_id": p.id,
+                "nombre": p.nombre,
+                "produccion_kg_dia": round(p.produccion_kg_dia, 2),
+                "pescadores": int(p.metadata.get("pescadores", 0)),
+                "rio": str(p.metadata.get("rio", "")),
+                "celdas": celdas,
+            })
+
+        candidatos_info = []
+        for c in cands_todos:
+            st = stats_cand.get(c.id, {"cubiertos": 0, "cubiertos_ids": [], "fallidos": [], "tiempos_ok": []})
+            n_cub = st["cubiertos"]
+            t_max = round(max(st["tiempos_ok"]), 2) if st["tiempos_ok"] else None
+            prov = provenance_coords.get(c.id, {"origen": "nodos_centros.csv", "commit": "—", "regla": ""})
+            candidatos_info.append({
+                "id": c.id,
+                "nombre": c.nombre,
+                "tipo": c.tipo,
+                "lat": round(c.latitud, 4),
+                "lon": round(c.longitud, 4),
+                "capacidad_frio_kg": int(c.capacidad_frio_kg),
+                "costo_fijo_csv": int(c.costo_fijo),
+                "costo_eval_esc": int(COSTO_FIJO_CENTRO_FRIO) if c.tipo == "F" else int(c.costo_fijo),
+                "tiene_energia": bool(c.tiene_energia),
+                "restriccion_ambiental": bool(c.restriccion_ambiental),
+                "es_candidato": bool(c.es_candidato_frio),
+                "cobertura_n": n_cub,
+                "cubiertos_ids": list(st["cubiertos_ids"]),
+                "fallidos": list(st["fallidos"]),
+                "cobertura_pct": round(n_cub / max(len(origenes_p), 1) * 100.0, 1),
+                "tiempo_max_h": t_max,
+                "uso_cap_pct": round(oferta_tot / c.capacidad_frio_kg * 100.0, 1) if c.capacidad_frio_kg > 0 else 0.0,
+                "origen_coords": prov["origen"],
+                "origen_commit": prov["commit"],
+                "regla": prov["regla"],
+            })
+
+        # Simulación paso a paso de la ruta crítica P05 -> V_PG1 (30.0 kg)
+        sim_p05 = SimuladorCadenaFrio(grafo, tiempo_limite_h=TIEMPO_MAX_SIN_FRIO_H)
+        ruta_p05 = ["P05", "A03", "D01", "M02", "A01", "F02", "V_PG1"]
+        res_p05 = sim_p05.simular_ruta(ruta_p05, 30.0)
+        pasos_p05 = []
+        det_prev = 0.0
+        kg_prev = 30.0
+        tsf_prev = 0.0
+        for idx_s, est in enumerate(res_p05.estados):
+            nd = grafo.obtener_nodo(est.nodo_id)
+            ar_prev = grafo.obtener_arista(ruta_p05[idx_s - 1], est.nodo_id) if idx_s > 0 else None
+            t_arista = round(ar_prev.tiempo_h, 2) if ar_prev else 0.0
+            t_tramo_ef = round(t_arista + (TIEMPO_TRANSBORDO_MUELLE_H if (nd and nd.tipo == "M") else 0.0), 2)
+            tsf_antes_reset = round(tsf_prev + t_tramo_ef, 2) if idx_s > 0 else 0.0
+            delta_det = round(est.deterioro_pct - det_prev, 3)
+            kg_perd_paso = round(kg_prev - est.kg_actual, 3)
+            cap_nd = int(nd.capacidad_frio_kg) if nd else 0
+            if idx_s == 0:
+                regla_mat = "Inicialización: kg_actual = 30.000 kg, temp = 30.0 °C, tiempo_sin_frio = 0.00 h."
+            elif nd and nd.tipo == "D":
+                regla_mat = f"calcular_deterioro({t_arista:.2f}, 30°C) = {t_arista*2.5:.3f}% × FACTOR_DETERIORO_ZONA_D ({FACTOR_DETERIORO_ZONA_D:g}) = {delta_det:.3f}%."
+            elif nd and nd.tipo == "M":
+                regla_mat = f"t_tramo = {t_arista:.2f} + TIEMPO_TRANSBORDO_MUELLE_H (0.25) = {t_tramo_ef:.2f} h → calcular_deterioro({t_tramo_ef:.2f}, 30°C) = {delta_det:.3f}%."
+            elif est.refrigerado:
+                regla_mat = f"Tramo a 30°C ({t_arista:.2f} h × 2.5%/h = {delta_det:.3f}%). Luego tiene_frio=(tipo='{nd.tipo}'∈{{F,A}} ∧ cap={cap_nd}>0)=True → temp=0°C y reset t_sin_frío=0.00 h."
+            else:
+                regla_mat = f"Tramo final a 30°C: {t_arista:.2f} h × 2.5%/h = {delta_det:.3f}%. Evaluación final: t_sin_frío ({est.tiempo_sin_frio_h:.2f} h) ≤ 4.00 h → cumple_limite=True."
+            pasos_p05.append({
+                "paso": idx_s,
+                "arista_id": f"{ruta_p05[idx_s - 1]} → {est.nodo_id}" if idx_s > 0 else "Inicio",
+                "nodo_id": est.nodo_id,
+                "nombre": nd.nombre if nd else est.nodo_id,
+                "tipo": nd.tipo if nd else "",
+                "capacidad_frio_kg": cap_nd,
+                "tiempo_arista_h": t_arista,
+                "tiempo_tramo_ef_h": t_tramo_ef,
+                "tiempo_acum_h": round(est.tiempo_acumulado_h, 2),
+                "tsf_antes_reset_h": tsf_antes_reset,
+                "tiempo_sin_frio_h": round(est.tiempo_sin_frio_h, 2),
+                "temp_c": round(est.temperatura_actual_c, 1),
+                "delta_det_pct": delta_det,
+                "det_acum_pct": round(est.deterioro_pct, 3),
+                "kg_anterior": round(kg_prev, 3),
+                "kg_actual": round(est.kg_actual, 3),
+                "kg_perdidos_paso": kg_perd_paso,
+                "refrigerado": bool(est.refrigerado),
+                "efecto": est.efecto or ("Inicio" if idx_s == 0 else "Entrega"),
+                "regla_matematica": regla_mat,
+            })
+            det_prev = est.deterioro_pct
+            kg_prev = est.kg_actual
+            tsf_prev = est.tiempo_sin_frio_h
+
+        # Sustitución real arista F02 -> F03
+        ar_f23 = grafo.obtener_arista("F02", "F03")
+        f23_info = {}
+        if ar_f23:
+            f23_info = {
+                "id": "F02 → F03",
+                "distancia_km": round(ar_f23.distancia_km, 1),
+                "tiempo_h": round(ar_f23.tiempo_h, 2),
+                "factor_estado_via": round(ar_f23.factor_estado_via, 2),
+                "factor_flujo": round(ar_f23.factor_flujo, 2),
+                "tiempo_espera_h": round(ar_f23.tiempo_espera_h, 2),
+                "tiempo_efectivo_h": round(ar_f23.tiempo_efectivo_h, 3),
+                "t_norm": round(ar_f23.tiempo_efectivo_h / 48.0, 5),
+                "costo_cop": int(ar_f23.costo_cop),
+                "costo_peajes_cop": int(ar_f23.costo_peajes_cop),
+                "costo_total_cop": int(ar_f23.costo_total_cop),
+                "c_norm": round(ar_f23.costo_total_cop / 5_000_000.0, 5),
+                "riesgo_termico": round(ar_f23.riesgo_termico, 2),
+                "riesgo_accidente": round(ar_f23.riesgo_accidente, 2),
+                "riesgo_derrumbe": round(ar_f23.riesgo_derrumbe, 2),
+                "riesgo_combinado": round(ar_f23.riesgo_combinado, 4),
+                "perdida_esperada": round(ar_f23.perdida_esperada, 3),
+                "p_norm": round(ar_f23.perdida_esperada / 100.0, 5),
+                "confiabilidad_via": round(ar_f23.confiabilidad_via, 2),
+                "prob_retraso": round(ar_f23.prob_retraso, 2),
+                "peso_combinado": round(ar_f23.to_dict()["peso_combinado"], 4),
+            }
+
+        flp_detallado = {
+            "oferta_total_kg": oferta_tot,
+            "num_centros_csv": len([n for n in grafo.nodos if n.tipo in ("F", "A", "M", "D", "H")]),
+            "candidatos": candidatos_info,
+            "matriz_7x5": matriz_7x5,
+            "simulacion_p05": {
+                "ruta": ruta_p05,
+                "kg_inicial": round(res_p05.kg_inicial, 3),
+                "kg_final": round(res_p05.kg_final, 3),
+                "perdida_kg": round(res_p05.perdida_kg, 3),
+                "perdida_pct": round(res_p05.perdida_pct, 2),
+                "costo_perdida_cop": round(res_p05.costo_perdida_cop, 0),
+                "tiempo_total_h": round(res_p05.tiempo_total_h, 2),
+                "tiempo_sin_frio_final_h": round(res_p05.tiempo_sin_frio_total_h, 2),
+                "cumple_limite": bool(res_p05.cumple_limite),
+                "pasos": pasos_p05,
+            },
+            "arista_f02_f03": f23_info,
+        }
+    except Exception:
+        flp_detallado = {}
+
     return {
         "nodos": nodos_data,
         "aristas": aristas_data,
@@ -513,6 +776,7 @@ def construir_datos_slides(
         "bfs_saltos": bfs_saltos,
         "dfs_rutas": dfs_rutas,
         "flp": flp_data,
+        "flp_detallado": flp_detallado,
         "escenarios_pg": escenarios_pg,
         "escenarios_bog": escenarios_bog,
         "eca": eca_data,
@@ -529,6 +793,10 @@ def construir_datos_slides(
             "TIEMPO_MAX_SIN_FRIO_H": TIEMPO_MAX_SIN_FRIO_H,
             "TIEMPO_TRANSBORDO_MUELLE_H": TIEMPO_TRANSBORDO_MUELLE_H,
             "FACTOR_DETERIORO_ZONA_D": FACTOR_DETERIORO_ZONA_D,
+            "COSTO_FIJO_CENTRO_FRIO": COSTO_FIJO_CENTRO_FRIO,
+            "TEMP_AMBIENTE_LLANOS_C": TEMP_AMBIENTE_LLANOS_C,
+            "VIDA_UTIL_HORAS": VIDA_UTIL_HORAS,
+            "COSTO_PERDIDA_KG": COSTO_PERDIDA_KG,
         },
     }
 
@@ -616,8 +884,11 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
   body:not(.folium-embed-only) #folium-title-card {{
     top: 68px !important;
   }}
+  body:not(.folium-embed-only) #folium-frio-card {{
+    top: 146px !important;
+  }}
   body:not(.folium-embed-only) #folium-itin-card {{
-    top: 138px !important;
+    top: 295px !important;
   }}
   body.folium-embed-only #agy-slide-nav,
   body.folium-embed-only #agy-app-shell,
@@ -1750,6 +2021,249 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
+  }}
+  .agy-prop-group h4.agy-prop-h4-btn {{
+    cursor: pointer;
+    padding: 6px 8px;
+    margin: -4px -8px 10px -8px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    border-bottom: 1px dashed var(--color-cork-border);
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  }}
+  .agy-prop-group h4.agy-prop-h4-btn:hover,
+  .agy-prop-group h4.agy-prop-h4-btn:focus-visible {{
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+    outline: none;
+  }}
+  .agy-prop-h4-pill {{
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    color: var(--color-porcelain);
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }}
+  .agy-prop-group h4.agy-prop-h4-btn:hover .agy-prop-h4-pill {{
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.24);
+  }}
+  /* Modal de Variables y Fórmulas (limpio, aireado y monocromático-editorial) */
+  .agy-vm-switch {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 12px 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }}
+  .agy-vm-entity-btn {{
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--color-ash-gray);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 140ms ease;
+  }}
+  .agy-vm-entity-btn.active {{
+    background: rgba(255, 255, 255, 0.11);
+    border-color: rgba(255, 255, 255, 0.28);
+    color: var(--color-porcelain);
+    font-weight: 600;
+  }}
+  .agy-vm-tabs {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }}
+  .agy-vm-tab {{
+    padding: 5px 10px;
+    border-radius: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--color-ash-gray);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 140ms ease;
+  }}
+  .agy-vm-tab:hover {{
+    color: var(--color-porcelain);
+    border-color: rgba(255, 255, 255, 0.18);
+  }}
+  .agy-vm-tab.active {{
+    background: #242428;
+    border-color: rgba(255, 255, 255, 0.25);
+    color: var(--color-porcelain);
+    font-weight: 600;
+  }}
+  .agy-vm-lead {{
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--color-silver-mist);
+    margin: 0 0 16px 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }}
+  .agy-vm-list {{
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }}
+  .agy-vm-card {{
+    background: #161618;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }}
+  .agy-vm-card-top {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }}
+  .agy-vm-name {{
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--color-porcelain);
+  }}
+  .agy-vm-badges {{
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }}
+  .agy-vm-tag {{
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: var(--color-silver-mist);
+  }}
+  .agy-vm-tag.calc {{
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: var(--color-porcelain);
+  }}
+  .agy-vm-desc {{
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--color-silver-mist);
+    margin: 0;
+  }}
+  .agy-vm-meta {{
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--color-ash-gray);
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }}
+  .agy-vm-live {{
+    color: var(--color-porcelain);
+    font-variant-numeric: tabular-nums;
+  }}
+  .agy-vm-formula {{
+    margin-top: 2px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: #0d0d10;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    overflow-x: auto;
+  }}
+  .agy-vm-formula-cap {{
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-ash-gray);
+    margin-bottom: 10px;
+  }}
+  .agy-vm-math-stack {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }}
+  .agy-vm-math-row {{
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    font-family: 'Newsreader', 'Cambria Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
+    font-size: 17px;
+    line-height: 1.45;
+    color: var(--color-bone-white);
+  }}
+  .agy-vm-math-row var {{
+    font-family: 'Newsreader', 'Cambria Math', 'Times New Roman', Georgia, serif;
+    font-style: italic;
+    font-weight: 600;
+    color: var(--color-bone-white);
+  }}
+  .agy-vm-math-row sub {{
+    font-family: 'Newsreader', 'Cambria Math', 'Times New Roman', Georgia, serif;
+    font-style: normal;
+    font-weight: 600;
+    font-size: 0.72em;
+    color: var(--color-silver-mist);
+    vertical-align: -0.22em;
+    margin-left: 1px;
+  }}
+  .agy-vm-math-row sub i {{
+    font-style: italic;
+  }}
+  .agy-vm-math-row sup {{
+    font-family: 'Newsreader', 'Cambria Math', 'Times New Roman', Georgia, serif;
+    font-style: normal;
+    font-weight: 600;
+    font-size: 0.72em;
+    vertical-align: 0.45em;
+    margin-left: 1px;
+  }}
+  .agy-vm-math-row code {{
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    background: rgba(255, 255, 255, 0.07);
+    padding: 1px 6px;
+    border-radius: 5px;
+    color: var(--color-porcelain);
+  }}
+  .agy-vm-math-sub {{
+    font-size: 13.5px;
+    color: var(--color-silver-mist);
+  }}
+  .agy-vm-math-sep {{
+    display: inline-block;
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.16);
+    margin: 0 10px;
   }}
   .agy-prop-row {{
     display: flex;
@@ -2714,10 +3228,454 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
     color: #10b981;
     border: 1px solid rgba(16, 185, 129, 0.35);
   }}
+
+  /* ═══════════════════════════════════════════════════════════════
+     PASO 2 & PASO 3 · WORKSPACE DEDICADO FLP + TOOLTIP TÉCNICO HOVER
+     ═══════════════════════════════════════════════════════════════ */
+  .agy-flp-subtabs {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 20px 0;
+    padding: 6px;
+    background: #121216;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+  }}
+  .agy-flp-subtab {{
+    background: transparent;
+    color: #a1a1aa;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 9px 14px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  }}
+  .agy-flp-subtab:hover {{
+    color: #f5f5f7;
+    background: rgba(255, 255, 255, 0.05);
+  }}
+  .agy-flp-subtab.active {{
+    background: rgba(128, 82, 255, 0.22);
+    color: #f5f5f7;
+    border-color: rgba(128, 82, 255, 0.55);
+  }}
+  .agy-flp-pane {{
+    display: none;
+  }}
+  .agy-flp-pane.active {{
+    display: block;
+    animation: agySlideEnter 180ms var(--ease-out) both;
+  }}
+  .agy-flp-pipe {{
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1.2fr;
+    gap: 12px;
+    align-items: stretch;
+    margin-bottom: 18px;
+  }}
+  @media (max-width: 980px) {{
+    .agy-flp-pipe {{
+      grid-template-columns: 1fr;
+    }}
+    .agy-flp-pipe-arrow {{
+      display: none;
+    }}
+  }}
+  .agy-flp-pipe-box {{
+    background: #141418;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }}
+  .agy-flp-pipe-box.accent {{
+    border-color: rgba(128, 82, 255, 0.4);
+    background: #171521;
+  }}
+  .agy-flp-pipe-arrow {{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8052ff;
+    font-size: 20px;
+    font-weight: 700;
+  }}
+  .agy-flp-pipe-kicker {{
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #a1a1aa;
+    margin-bottom: 6px;
+  }}
+  .agy-flp-pipe-title {{
+    font-size: 15px;
+    font-weight: 700;
+    color: #f5f5f7;
+    margin-bottom: 6px;
+  }}
+  .agy-flp-var-grid {{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+  }}
+  @media (max-width: 1050px) {{
+    .agy-flp-var-grid {{
+      grid-template-columns: 1fr;
+    }}
+  }}
+  .agy-flp-var-col {{
+    background: #141418;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }}
+  .agy-flp-var-col-head {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #e4e4e7;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }}
+  .agy-flp-var-chips {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }}
+  .agy-flp-vchip {{
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border-radius: 7px;
+    background: #1d1d22;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e4e4e7;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    cursor: help;
+    transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+  }}
+  .agy-flp-vchip:hover {{
+    border-color: #8052ff;
+    background: rgba(128, 82, 255, 0.2);
+    color: #ffffff;
+  }}
+  .agy-flp-vchip.calc {{
+    border-color: rgba(255, 184, 41, 0.32);
+    color: #fde68a;
+  }}
+  .agy-flp-vchip.const {{
+    border-color: rgba(16, 185, 129, 0.32);
+    color: #6ee7b7;
+  }}
+  .agy-flp-vchip.rejected {{
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.12);
+    color: #fca5a5;
+  }}
+  .agy-flp-vchip.opt {{
+    border-color: rgba(16, 185, 129, 0.55);
+    background: rgba(16, 185, 129, 0.16);
+    color: #34d399;
+    font-weight: 700;
+  }}
+  .agy-flp-mat-table {{
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+  }}
+  .agy-flp-mat-table th {{
+    text-align: right;
+    padding: 10px 12px;
+    background: #18181d;
+    color: #a1a1aa;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    user-select: none;
+  }}
+  .agy-flp-mat-table th:first-child {{
+    text-align: left;
+    cursor: default;
+  }}
+  .agy-flp-mat-table th.col-opt {{
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border-bottom-color: rgba(16, 185, 129, 0.45);
+  }}
+  .agy-flp-mat-table th.col-focus {{
+    outline: 1px solid #8052ff;
+    color: #fff;
+  }}
+  .agy-flp-mat-table td {{
+    padding: 9px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    text-align: right;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: #e4e4e7;
+    transition: background 120ms ease;
+  }}
+  .agy-flp-mat-table td:first-child {{
+    text-align: left;
+    font-family: var(--font-sans);
+  }}
+  .agy-flp-mat-table td.cell-hoverable {{
+    cursor: help;
+  }}
+  .agy-flp-mat-table td.cell-hoverable:hover {{
+    background: rgba(128, 82, 255, 0.22) !important;
+  }}
+  .agy-flp-mat-table td.col-opt {{
+    background: rgba(16, 185, 129, 0.08);
+    color: #a7f3d0;
+    font-weight: 700;
+  }}
+  .agy-flp-mat-table td.cell-warn {{
+    color: #fbbf24;
+    font-weight: 700;
+  }}
+  .agy-flp-mat-table td.cell-fail {{
+    background: rgba(239, 68, 68, 0.14);
+    color: #f87171;
+    font-weight: 700;
+  }}
+  .agy-flp-mat-table td.cell-inf {{
+    color: #71717a;
+  }}
+  .agy-flp-mat-table tr.mat-foot td {{
+    background: #16161b;
+    font-weight: 700;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    padding: 11px 12px;
+  }}
+  .agy-flp-chain {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 8px;
+    margin: 12px 0 16px 0;
+  }}
+  .agy-flp-node-step {{
+    flex: 1 1 118px;
+    background: #16161b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 10px 11px;
+    cursor: help;
+    transition: border-color 140ms ease, transform 140ms ease;
+  }}
+  .agy-flp-node-step:hover {{
+    border-color: #8052ff;
+    transform: translateY(-2px);
+  }}
+  .agy-flp-node-step.step-cold {{
+    border-color: rgba(16, 185, 129, 0.45);
+    background: rgba(16, 185, 129, 0.08);
+  }}
+  .agy-flp-node-step.step-warn {{
+    border-color: rgba(245, 158, 11, 0.45);
+    background: rgba(245, 158, 11, 0.08);
+  }}
+  .agy-flp-node-step.step-danger {{
+    border-color: rgba(239, 68, 68, 0.45);
+    background: rgba(239, 68, 68, 0.08);
+  }}
+  .agy-flp-formula-card {{
+    background: #141418;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }}
+  .agy-flp-formula-head {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }}
+  .agy-flp-formula-title {{
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #f5f5f7;
+  }}
+  .agy-flp-formula-src {{
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: #a1a1aa;
+  }}
+  .agy-flp-esc-table {{
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }}
+  .agy-flp-esc-table th {{
+    text-align: left;
+    padding: 10px 12px;
+    background: #18181d;
+    color: #a1a1aa;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }}
+  .agy-flp-esc-table td {{
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    color: #e4e4e7;
+  }}
+  .agy-flp-esc-table tr.esc-opt td {{
+    background: rgba(16, 185, 129, 0.09);
+    color: #ecfdf5;
+    font-weight: 600;
+  }}
+  .agy-flp-esc-table tr.esc-hoverable {{
+    cursor: help;
+  }}
+  .agy-flp-esc-table tr.esc-hoverable:hover td {{
+    background: rgba(128, 82, 255, 0.16);
+  }}
+  .agy-tip-target {{
+    cursor: help;
+    border-radius: 6px;
+    transition: background 120ms ease;
+  }}
+  .agy-tip-target:hover {{
+    background: rgba(128, 82, 255, 0.12);
+  }}
+  /* Tooltip flotante técnico global (informe_calculo_centros_frio.md — explicación paso a paso) */
+  #agy-flp-hover-tip {{
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 99999;
+    width: 455px;
+    max-width: min(475px, calc(100vw - 24px));
+    max-height: calc(100vh - 28px);
+    overflow-y: auto;
+    background: #111116;
+    color: #f5f5f7;
+    border: 1px solid rgba(128, 82, 255, 0.52);
+    border-radius: 12px;
+    padding: 13px 15px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.72);
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(4px);
+    transition: opacity 110ms ease, transform 110ms ease;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.48;
+  }}
+  #agy-flp-hover-tip.visible {{
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }}
+  .agy-ht-steps {{
+    margin: 4px 0 0 0;
+    padding-left: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    color: #e4e4e7;
+    font-size: 11.5px;
+  }}
+  .agy-ht-steps li {{
+    line-height: 1.42;
+  }}
+  .agy-ht-decision {{
+    margin-top: 5px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.32);
+    color: #a7f3d0;
+    font-family: var(--font-mono);
+    font-size: 11.2px;
+    line-height: 1.4;
+  }}
+  .agy-ht-decision.warn {{
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #fecaca;
+  }}
+  .agy-ht-cat {{
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9.8px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #c4b5fd;
+    background: rgba(128, 82, 255, 0.18);
+    border: 1px solid rgba(128, 82, 255, 0.35);
+    padding: 2px 7px;
+    border-radius: 999px;
+    margin-bottom: 6px;
+  }}
+  .agy-ht-title {{
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 7px;
+  }}
+  .agy-ht-grid {{
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }}
+  .agy-ht-row {{
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+  }}
+  .agy-ht-k {{
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #9ca3af;
+  }}
+  .agy-ht-v {{
+    color: #e4e4e7;
+    font-size: 11.8px;
+    font-variant-numeric: tabular-nums;
+  }}
+  .agy-ht-v code {{
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #fde68a;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 4px;
+    border-radius: 4px;
+  }}
 </style>
 
 <!-- Etiqueta Serial Vertical estilo ORYZO AI -->
 <div id="agy-oryzo-serial" aria-hidden="true">UNILLANOS · ING. SISTEMAS · 603301 · PUERTO GAITÁN, META · G=(V,E)</div>
+<!-- Tooltip Técnico Flotante Global (Catálogo de Variables, Matriz 7×5, Simulación P05 y Escenarios) -->
+<div id="agy-flp-hover-tip" role="tooltip" aria-hidden="true"></div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      BARRA GLOBAL DE NAVEGACIÓN (8 DIAPOSITIVAS DE LA EXPOSICIÓN INTERACTIVA)
@@ -2756,7 +3714,7 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
       <span class="agy-tab-dot"></span>6. Programa y Teorías
     </button>
     <button class="agy-slide-tab is-editorial" role="tab" aria-selected="false" data-slide="6" onclick="agyCambiarSlide(6, false)">
-      <span class="agy-tab-dot"></span>7. Solución FLP
+      <span class="agy-tab-dot"></span>7. Cálculo FLP
     </button>
     <button class="agy-slide-tab is-editorial" role="tab" aria-selected="false" data-slide="7" onclick="agyCambiarSlide(7, false)">
       <span class="agy-tab-dot"></span>8. Comparación y Conclusión
@@ -3313,84 +4271,114 @@ def _construir_bloque_ui_interactiva(json_payload: str, modo_autonomo: bool = Tr
       </div>
     </article>
 
-    <!-- DIAPOSITIVA 7: SOLUCIÓN PROPUESTA (FLP GREEDY), ESCENARIOS, MÉTRICAS Y CRITERIO DE DEFENSA -->
+    <!-- DIAPOSITIVA 7: VISTA DEDICADA DE CÁLCULO FLP (PASO 2 & PASO 3: ORIGEN, VARIABLES, MATRIZ 7×5, FÓRMULAS Y ESCENARIOS) -->
     <article id="agy-ed-slide-6" class="agy-ed-slide">
-      <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;padding-bottom:24px;border-bottom:1px dashed var(--color-cork-border);margin-bottom:28px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;padding-bottom:20px;border-bottom:1px dashed var(--color-cork-border);margin-bottom:22px;">
         <div>
-          <span class="agy-badge" style="color:var(--color-saffron-spark);border-color:rgba(255,184,41,0.45);margin-bottom:10px;">FASE 3 · DEMOSTRACIÓN CUANTITATIVA Y CRITERIO DE DEFENSA DE LA SOLUCIÓN FLP</span>
-          <h2>La Solución Cuantitativa: Localización Óptima FLP, Métricas y Defensa</h2>
-          <p style="margin-top:6px;">Demostración numérica sobre los 5 escenarios de inversión frigorífica, tiempos de acceso sin frío de las 7 asociaciones y justificación ante cuestionamientos.</p>
+          <span class="agy-badge" style="color:var(--color-saffron-spark);border-color:rgba(255,184,41,0.45);margin-bottom:10px;">FASE 3 · AUDITORÍA COMPLETA DEL CÁLCULO DE CENTROS DE FRÍO (FLP)</span>
+          <h2>Cálculo de Centros de Frío: Origen, Variables, Matriz 7×5 y Fórmulas</h2>
+          <p style="margin-top:6px;">Flujo de demostración paso a paso. <strong style="color:#c4b5fd;">Pasa el cursor</strong> sobre cualquier variable de nodo/arista, celda de la matriz, paso térmico o escenario para ver su archivo fuente, tipo y fórmula exacta.</p>
         </div>
         <div class="agy-cta-row">
+          <button type="button" class="agy-pill-ghost" onclick="agyCambiarSlide(1, false)">← Volver al Mapa SIG</button>
           <div class="agy-ctrl-group">
-            <button id="agy-ed-dest-pg" class="agy-ctrl-btn active" onclick="agyCambiarDestinoEditorial('PG')">Escenario Local (Pto. Gaitán)</button>
-            <button id="agy-ed-dest-bog" class="agy-ctrl-btn" onclick="agyCambiarDestinoEditorial('BOG')">Corredor Nacional (Bogotá)</button>
+            <button id="agy-ed-dest-pg" class="agy-ctrl-btn active" onclick="agyCambiarDestinoEditorial('PG')">Local (V_PG1)</button>
+            <button id="agy-ed-dest-bog" class="agy-ctrl-btn" onclick="agyCambiarDestinoEditorial('BOG')">★ Bogotá (V_BOG1)</button>
           </div>
           <button class="agy-pill-cta" onclick="agyCambiarSlide(7, false)">Ir a Comparación Antes vs. Después →</button>
         </div>
       </div>
 
-      <!-- 4 KPIs de la Solución Propuesta -->
-      <div class="agy-bento-grid-4">
-        <div class="agy-plinth-card highlight-saffron">
+      <!-- 4 KPIs Verificados de la Solución Propuesta (con hover técnico) -->
+      <div class="agy-bento-grid-4" style="margin-bottom:18px;">
+        <div class="agy-plinth-card highlight-saffron agy-tip-target" data-flp-tip="kpi_solo_f02">
           <div class="agy-stat-num">Solo F02</div>
           <div class="agy-stat-title">Configuración Óptima FLP</div>
-          <div class="agy-stat-desc">Centro Frío Puerto Gaitán en el casco urbano consolida toda la cuenca (265.75 kg/día = 5.3% de su capacidad de 5,000 kg).</div>
+          <div class="agy-stat-desc">Puerto Gaitán urbano (<code>4.3128, -72.0826</code>) consolida los 265.75 kg/día usando solo el 5.3% de sus 5,000 kg.</div>
         </div>
-        <div class="agy-plinth-card highlight-iris">
+        <div class="agy-plinth-card highlight-iris agy-tip-target" data-flp-tip="kpi_cobertura_fao">
           <div class="agy-stat-num">100<span class="agy-stat-unit">%</span></div>
-          <div class="agy-stat-title">Cobertura Sanitaria FAO</div>
-          <div class="agy-stat-desc">Las 7 asociaciones pesqueras ingresan a refrigeración en t ≤ 2.20 h (reducción del −76.8% frente a las 9.48 h sin frío).</div>
+          <div class="agy-stat-title">Cobertura Sanitaria FAO (7/7)</div>
+          <div class="agy-stat-desc">Dijkstra FLP (<code>tiempo_h</code>): 7/7 en ≤ 2.65 h (P05). Con poda <code>dijkstra_con_cota_inocuidad</code>: máx. 2.10 h.</div>
         </div>
-        <div class="agy-plinth-card">
+        <div class="agy-plinth-card agy-tip-target" data-flp-tip="kpi_costo_opt">
           <div class="agy-stat-num">$13.02<span class="agy-stat-unit">M/mes</span></div>
           <div class="agy-stat-title">Costo Operativo Optimizado</div>
-          <div class="agy-stat-desc">$13,023,272 COP/mes hacia Bogotá ($59,080 COP/kg) y $5,523,133 COP/mes en distribución local ($21,285 COP/kg).</div>
+          <div class="agy-stat-desc">$13,023,272 COP/mes hacia Bogotá ($59,080/kg) y $5,523,133 COP/mes en distribución local ($21,285/kg).</div>
         </div>
-        <div class="agy-plinth-card">
-          <div class="agy-stat-num" style="color:#10b981;">$10.0<span class="agy-stat-unit">M/mes</span></div>
+        <div class="agy-plinth-card agy-tip-target" data-flp-tip="kpi_ahorro_flp">
+          <div class="agy-stat-num" style="color:#10b981;">−$10.0<span class="agy-stat-unit">M/mes</span></div>
           <div class="agy-stat-title">Ahorro Directo Mensual (−43.4%)</div>
-          <div class="agy-stat-desc">Evita el sobrecosto de operar las 3 plantas frigoríficas simultáneamente ($23,023,272 COP/mes = $120M COP/año desperdiciados).</div>
+          <div class="agy-stat-desc">Evita operar 3 plantas simultáneas ($23,023,272 COP/mes) sin sacrificar cobertura ni aumentar la merma.</div>
         </div>
       </div>
 
-      <div class="agy-bento-grid-2">
-        <div class="agy-plinth-card">
-          <h3>Comparativa de Costo Mensual y Pérdida por Escenario FLP</h3>
-          <p style="font-size:14px;">Evaluación técnica de los 5 escenarios reales mediante EvaluadorEscenarios y SimuladorCadenaFrio.</p>
-          <div id="agy-ed-flp-chart" style="margin-top:10px;"></div>
-        </div>
-        <div class="agy-plinth-card">
+      <!-- Barra de 4 Sub-vistas Dedicadas (Paso 2 y Paso 3 de la Propuesta Visual) -->
+      <div class="agy-flp-subtabs" role="tablist" aria-label="Pasos del cálculo FLP">
+        <button id="agy-flp-tab-0" class="agy-flp-subtab active" role="tab" onclick="agyCambiarSubtabFLP(0)">1. Origen, Filtro y Variables</button>
+        <button id="agy-flp-tab-1" class="agy-flp-subtab" role="tab" onclick="agyCambiarSubtabFLP(1)">2. Matriz Dijkstra 7×5 y Greedy/MILP</button>
+        <button id="agy-flp-tab-2" class="agy-flp-subtab" role="tab" onclick="agyCambiarSubtabFLP(2)">3. Fórmulas y Simulación Térmica P05</button>
+        <button id="agy-flp-tab-3" class="agy-flp-subtab" role="tab" onclick="agyCambiarSubtabFLP(3)">4. 5 Escenarios, Defensa y Auditoría</button>
+      </div>
+
+      <!-- SUBTAB 0: ORIGEN DE CANDIDATOS, FILTRO BOOLEANO Y CATÁLOGO INTERACTIVO DE VARIABLES -->
+      <section id="agy-flp-pane-0" class="agy-flp-pane active">
+        <div id="agy-flp-origin-wrap"></div>
+      </section>
+
+      <!-- SUBTAB 1: MATRIZ DIJKSTRA 7×5 (P01..P07 × 5 CANDIDATOS) + GREEDY/MILP -->
+      <section id="agy-flp-pane-1" class="agy-flp-pane">
+        <div id="agy-flp-matrix-wrap"></div>
+      </section>
+
+      <!-- SUBTAB 2: FÓRMULAS APLICADAS + SIMULACIÓN TÉRMICA RUTA CRÍTICA P05 -->
+      <section id="agy-flp-pane-2" class="agy-flp-pane">
+        <div id="agy-flp-thermal-wrap"></div>
+        <div class="agy-plinth-card" style="margin-top:16px;">
           <h3>Tiempo Acumulado Sin Frío por Asociación vs. Límite FAO (240 min)</h3>
-          <p style="font-size:14px;">Haz clic sobre cualquier asociación para abrir su itinerario óptimo directamente en el Grafo Multimodal.</p>
+          <p style="font-size:13.5px;">Haz clic sobre cualquier asociación para abrir su itinerario óptimo directamente en el Grafo Multimodal.</p>
           <div id="agy-ed-thermal-chart" style="margin-top:10px;"></div>
         </div>
-      </div>
+      </section>
 
-      <!-- Guía de Defensa y Cuestionamiento Crítico de la Solución FLP -->
-      <div class="agy-math-showcase" style="margin-bottom:0;">
-        <div class="agy-math-top">
-          <div class="agy-math-heading">
-            <h3>Criterio de Defensa: Cómo Cuestionar y Defender Numéricamente la Decisión «Solo F02»</h3>
-            <p>Respuestas cuantitativas exactas ante las 3 objeciones técnicas más frecuentes en sustentación.</p>
-          </div>
-          <span class="agy-badge" style="color:#10b981;border-color:rgba(16,185,129,0.45);">DEFENSA BASADA EN MÉTRICAS</span>
+      <!-- SUBTAB 3: EVALUACIÓN DE LOS 5 ESCENARIOS + CRITERIO DE DEFENSA Y AUDITORÍA -->
+      <section id="agy-flp-pane-3" class="agy-flp-pane">
+        <div id="agy-flp-scenarios-wrap"></div>
+
+        <div class="agy-plinth-card" style="margin:16px 0;">
+          <h3>Gráfico Comparativo de Costo Mensual y Pérdida por Escenario FLP</h3>
+          <p style="font-size:13.5px;">Evaluación técnica de los 5 escenarios reales mediante <code>EvaluadorEscenarios</code> y <code>SimuladorCadenaFrio</code>.</p>
+          <div id="agy-ed-flp-chart" style="margin-top:10px;"></div>
         </div>
-        <div class="agy-bento-grid-3" style="margin-bottom:0;">
-          <div class="agy-plinth-card obsidian">
-            <div class="agy-stat-title" style="color:var(--color-saffron-spark);">1. ¿Por qué F02 y no F01 (Alto Neblinas)?</div>
-            <p style="font-size:13.5px;">Aunque F01 queda cerca de P01 y P02, las asociaciones del río Iteviare y sur (<strong>P03, P04, P05 = 111.75 kg/día, 42% de la oferta</strong>) entran por A01 y M02 hacia el casco urbano. Obligarlas a subir a F01 añade desvíos por vía regular; <strong>F02</strong> está en el nodo articulador urbano con energía trifásica confiable y salida directa a la Ruta 40.</p>
+
+        <!-- Guía de Defensa y Cuestionamiento Crítico (Cifras 100% Verificadas) -->
+        <div class="agy-math-showcase" style="margin-bottom:16px;">
+          <div class="agy-math-top">
+            <div class="agy-math-heading">
+              <h3>Criterio de Defensa: Cómo Defender Numéricamente la Decisión «Solo F02»</h3>
+              <p>Respuestas cuantitativas exactas verificadas contra el código y los CSV ante objeciones del jurado.</p>
+            </div>
+            <span class="agy-badge" style="color:#10b981;border-color:rgba(16,185,129,0.45);">DEFENSA AUDITADA</span>
           </div>
-          <div class="agy-plinth-card obsidian">
-            <div class="agy-stat-title" style="color:var(--color-electric-iris);">2. ¿Por qué no F03 (Puerto López)?</div>
-            <p style="font-size:13.5px;">Puerto López (F03) está a <strong>89 km al occidente</strong> por carretera nacional. Si no hay frío en Puerto Gaitán (F02), el pescado de P05 tardaría <strong>&gt; 4.15 h</strong> en llegar a F03 (violando el límite FAO de 4.0 h). Por eso F03 funciona como nodo de relevo hacia Bogotá, pero no sustituye a F02.</p>
-          </div>
-          <div class="agy-plinth-card obsidian">
-            <div class="agy-stat-title" style="color:#10b981;">3. ¿Por qué no abrir los 3 centros (F01+F02+F03)?</div>
-            <p style="font-size:13.5px;">Porque la oferta total (<strong>265.75 kg/día</strong>) cabe 18 veces dentro de un solo centro (<strong>5,000 kg</strong>). Abrir 3 plantas sube el costo fijo de <strong>$5M a $15M COP/mes (+200%)</strong> mientras la merma local permanece idéntica en <strong>2.4% (6.3 kg)</strong>. Es decir: gastar $10M/mes extra por 0.0 kg de mejora.</p>
+          <div class="agy-bento-grid-3" style="margin-bottom:0;">
+            <div class="agy-plinth-card obsidian">
+              <div class="agy-stat-title" style="color:var(--color-saffron-spark);">1. ¿Por qué F02 y no F01 (Alto Neblinas)?</div>
+              <p style="font-size:13.2px;">Las asociaciones del sur/Iteviare (<strong>P03 + P04 + P05 = 75.0 kg/día, 28.2% de la oferta</strong>; 25 + 20 + 30 kg/día) entran por A01 y M02 hacia el casco urbano y en el grafo dirigido <strong>no alcanzan F01 (∞)</strong>. Así F01 solo cubre <strong>4/7 (57.1%)</strong>, mientras <strong>F02</strong> cubre <strong>7/7 (100%)</strong> con energía trifásica y salida directa a la Ruta 40.</p>
+            </div>
+            <div class="agy-plinth-card obsidian">
+              <div class="agy-stat-title" style="color:var(--color-electric-iris);">2. ¿Por qué no F03 (Puerto López)?</div>
+              <p style="font-size:13.2px;">Puerto López (F03) está a <strong>126 km al occidente</strong> por la Ruta Nacional 40. Sin frío previo en Puerto Gaitán, <strong>P05 → F03 tarda 5.15 h</strong> (violando el límite FAO de 4.0 h). Además, el grafo dirigido tiene <code>F02→F03</code> sin retorno a <code>V_PG1</code>, por lo que su cobertura local es 0%.</p>
+            </div>
+            <div class="agy-plinth-card obsidian">
+              <div class="agy-stat-title" style="color:#10b981;">3. ¿Por qué no abrir los 3 centros (F01+F02+F03)?</div>
+              <p style="font-size:13.2px;">La oferta total censada (<strong>265.75 kg/día</strong>) ocupa apenas el <strong>5.3%</strong> de un solo centro (<strong>5,000 kg</strong>). Abrir 3 plantas eleva el costo fijo de <strong>$5M a $15M COP/mes (+200%)</strong> mientras la merma permanece igual (2.4% local / 17.1% Bogotá): pagar <strong>$10M COP/mes extra por 0.0 kg de mejora</strong>.</p>
+            </div>
           </div>
         </div>
-      </div>
+
+        <!-- Notas Críticas de Auditoría (Sección 5 de informe_calculo_centros_frio.md) -->
+        <div id="agy-flp-audit-wrap"></div>
+      </section>
     </article>
 
     <!-- DIAPOSITIVA 8: COMPARADOR INTERACTIVO ANTES VS DESPUÉS Y DELIMITACIÓN DE ÁREAS EXTERNAS -->
@@ -4092,7 +5080,9 @@ function agyInicializarSlidesEditoriales() {{
     `;
   }}
 
-  // 5. Gráficos de FLP y Tiempos Térmicos (Diapositiva 7)
+  // 5. Gráficos de FLP, Workspace Detallado FLP y Tiempos Térmicos (Diapositiva 7)
+  agyInicializarHoverTooltipsFLP();
+  agyRenderizarWorkspaceFLP();
   agyRenderizarGraficosSlide7("PG");
 
   // 6. Simulador Térmico Crosshair (Slide 1) y Comparador Antes vs Después (Slide 8)
@@ -5251,6 +6241,336 @@ function agyCerrarModalDetalle() {{
   document.getElementById("agy-modal-backdrop")?.classList.remove("open");
 }}
 
+const AGY_VARS_DOCS = {{
+  nodo: {{
+    titulo: "Anatomía del Vértice — 12 Variables Reales (src/models/nodo.py)",
+    secciones: [
+      {{
+        id: 1,
+        label: "1. Identidad y GPS",
+        intro: "Identifican cada punto físico del territorio (pesca, muelle, acopio, frío, zona crítica, hábitat o mercado), fijan su posición en el elipsoide WGS 84 y determinan su rol biológico y algorítmico dentro del grafo.",
+        vars: [
+          {{
+            name: "id", type: "str", origen: "Dato CSV", where: "grafo_logistico.py · dijkstra.py",
+            desc: "Clave única del vértice (ej. P01, M01, F02). Indexa el nodo dentro de la tabla hash de adyacencia para recuperarlo en tiempo constante.",
+            live: (n) => n ? n.id : null,
+            formulaCap: "Acceso en memoria (Tabla Hash)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>T</var>(<code>obtener_nodo(id)</code>)<span class="agy-op">=</span><var>O</var>(1)</div></div>'
+          }},
+          {{
+            name: "nombre", type: "str", origen: "Dato CSV", where: "folium_map.py · graph_slides.py",
+            desc: "Denominación real del lugar o asociación (ej. ASOPESGA, Muelle Río Meta Alto). Proporciona trazabilidad legible en mapas, tablas e informes.",
+            live: (n) => n ? n.nombre : null
+          }},
+          {{
+            name: "tipo", type: "str", origen: "Dato CSV", where: "cold_chain.py (L148–178) · nodo.py",
+            desc: "Código de rol (P, M, A, F, D, H, V). Actúa como conmutador físico-biológico al atravesar el vértice durante la simulación térmica y el ruteo.",
+            live: (n) => n ? `${{n.tipo}} · ${{n.tipo_descripcion}}` : null,
+            formulaCap: "Reglas de transición por tipo de nodo (cold_chain.py)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><b>D:</b>&nbsp;<var>D</var><sub>tramo</sub><span class="agy-op">&larr;</span><var>D</var><sub>tramo</sub><span class="agy-op">&middot;</span>1.5<span class="agy-vm-math-sep"></span><b>M:</b>&nbsp;<var>t</var><sub>tramo</sub><span class="agy-op">&larr;</span><var>t</var><sub>tramo</sub><span class="agy-op">+</span>0.25 h</div><div class="agy-vm-math-row"><b>F / A</b>&nbsp;(<var>C</var><sub>fr&iacute;o</sub><span class="agy-op">&gt;</span>0):&nbsp;<var>t</var><sub>sin fr&iacute;o</sub><span class="agy-op">&larr;</span>0 h,&nbsp;&nbsp;<var>T</var><span class="agy-op">&larr;</span>0 &deg;C</div></div>'
+          }},
+          {{
+            name: "latitud / longitud", type: "float", origen: "Dato GPS (WGS 84)", where: "geo_utils.py (L18–43) · route_geometry.py",
+            desc: "Coordenadas geográficas decimales Norte y Oeste. Permiten trazar geometrías reales sobre OSRM/IGAC y calcular distancias geodésicas esféricas mediante Haversine.",
+            live: (n) => n ? `${{n.latitud.toFixed(4)}}°N, ${{n.longitud.toFixed(4)}}°W` : null,
+            formulaCap: "Cálculo de distancia geodésica — Fórmula de Haversine (R = 6371 km)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>a</var><span class="agy-op">=</span>sin<sup>2</sup><span class="agy-frac"><span class="agy-frac-num">&Delta;&phi;</span><span class="agy-frac-den">2</span></span><span class="agy-op">+</span>cos(<var>&phi;</var><sub>1</sub>)&middot;cos(<var>&phi;</var><sub>2</sub>)&middot;sin<sup>2</sup><span class="agy-frac"><span class="agy-frac-num">&Delta;&lambda;</span><span class="agy-frac-den">2</span></span></div><div class="agy-vm-math-row"><var>d</var><span class="agy-op">=</span>2<var>R</var><span class="agy-op">&middot;</span>atan2(&radic;<var>a</var>,&nbsp;&radic;(1&minus;<var>a</var>))</div></div>'
+          }}
+        ]
+      }},
+      {{
+        id: 2,
+        label: "2. Producción y Costos",
+        intro: "Cuantifican la biomasa diaria inyectada en origen, los límites de almacenamiento frigorífico y la inversión mensual fija que gobiernan el Problema de Localización de Instalaciones (FLP).",
+        vars: [
+          {{
+            name: "produccion_kg_dia", type: "float", origen: "Dato AUNAP / ECA", where: "grafo_logistico.py · cold_chain.py · eca_solutions.py",
+            desc: "Volumen diario de pescado fresco capturado en nodos de origen P. Define la masa inicial del simulador de merma y el requerimiento de hielo 1:1.",
+            live: (n) => n ? `${{n.produccion_kg_dia.toFixed(2)}} kg/día` : null,
+            formulaCap: "Carga total de la red y balance de hielo 1:1",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>Q</var><sub>tot</sub><span class="agy-op">=</span><span class="agy-sum">&sum;</span><sub><i>i</i>&isin;<i>P</i></sub>&nbsp;<var>q</var><sub><i>i</i></sub><span class="agy-op">=</span>265.75 kg/d&iacute;a<span class="agy-vm-math-sep"></span><var>Q</var><sub>hielo</sub><span class="agy-op">=</span>1.0<span class="agy-op">&middot;</span><var>q</var><sub><i>i</i></sub></div></div>'
+          }},
+          {{
+            name: "capacidad_frio_kg", type: "float", origen: "Dato CSV", where: "facility_location.py · cold_chain.py (L145)",
+            desc: "Tonelaje máximo que puede refrigerar un nodo F o A. Actúa como restricción dura de capacidad en el FLP y activa el reinicio térmico cuando es mayor que cero.",
+            live: (n) => n ? `${{n.capacidad_frio_kg.toLocaleString()}} kg` : null,
+            formulaCap: "Restricción de capacidad del modelo FLP (facility_location.py)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><span class="agy-sum">&sum;</span><sub><i>i</i>&isin;<i>P</i></sub>&nbsp;<var>q</var><sub><i>i</i></sub><span class="agy-op">&middot;</span><var>x</var><sub><i>ij</i></sub><span class="agy-op">&le;</span><var>C</var><sub><i>j</i></sub><span class="agy-op">&middot;</span><var>y</var><sub><i>j</i></sub>&nbsp;&nbsp;&nbsp;(&forall;&nbsp;<var>j</var>&nbsp;&isin;&nbsp;<var>F</var>)</div></div>'
+          }},
+          {{
+            name: "costo_fijo", type: "float", origen: "Dato CSV (COP/mes)", where: "facility_location.py · scenario_evaluator.py",
+            desc: "Costo mensual de operación, nómina y energía de abrir una planta (ej. $3,000,000 COP/mes en F02). Penaliza abrir plantas redundantes en la función objetivo FLP.",
+            live: (n) => n ? `$${{n.costo_fijo.toLocaleString()}} COP/mes` : null,
+            formulaCap: "Función objetivo del FLP (apertura fija + operación)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row">min&nbsp;<var>Z</var><span class="agy-op">=</span><span class="agy-sum">&sum;</span><sub><i>j</i>&isin;<i>F</i></sub>&nbsp;<var>F</var><sub><i>j</i></sub><span class="agy-op">&middot;</span><var>y</var><sub><i>j</i></sub><span class="agy-op">+</span><span class="agy-sum">&sum;</span><sub><i>i,j</i></sub>&nbsp;<var>c</var><sub><i>ij</i></sub><span class="agy-op">&middot;</span><var>x</var><sub><i>ij</i></sub></div></div>'
+          }},
+          {{
+            name: "metadata (demanda, río, pescadores)", type: "dict", origen: "Dato CSV flexible", where: "data_loader.py · graph_slides.py",
+            desc: "Diccionario extensible que guarda la demanda comercial en mercados V, el río asociado y el censo de pescadores por asociación sin alterar el esquema base de Nodo.",
+            live: (n) => n ? `Demanda: ${{n.metadata.demanda_kg_dia || 0}} kg/d · Río: ${{n.metadata.rio || "—"}}` : null
+          }}
+        ]
+      }},
+      {{
+        id: 3,
+        label: "3. Infraestructura y Filtros",
+        intro: "Variables booleanas que evalúan la viabilidad técnica real en campo (energía, agua, muelle) y aplican bloqueos ambientales estrictos dentro de los algoritmos de caminos mínimos.",
+        vars: [
+          {{
+            name: "tiene_energia", type: "bool", origen: "Dato CSV", where: "nodo.py (L92) · facility_location.py",
+            desc: "Indica si el punto cuenta con red eléctrica trifásica confiable para operar compresores y fabricar hielo. Excluye automáticamente veredas sin red (como A03).",
+            live: (n) => n ? (n.tiene_energia ? "True (Energía continua)" : "False (Sin red estable)") : null
+          }},
+          {{
+            name: "tiene_agua", type: "bool", origen: "Dato CSV", where: "nodos_centros.csv · validaciones BPP",
+            desc: "Verifica disponibilidad de agua potable, requisito sanitario obligatorio de la FAO e INVIMA para fabricar hielo higiénico en escarcha y lavado de captura.",
+            live: (n) => n ? (n.tiene_agua ? "True (Disponible)" : "False") : null
+          }},
+          {{
+            name: "tiene_muelle", type: "bool", origen: "Dato CSV", where: "nodo.py · aristas.csv",
+            desc: "Señala si existe infraestructura física de desembarque para atracar lanchas y transferir carga al modo terrestre sin deterioro por arrastre.",
+            live: (n) => n ? (n.tiene_muelle ? "True (Con muelle)" : "False") : null
+          }},
+          {{
+            name: "restriccion_ambiental", type: "bool", origen: "Dato CSV", where: "dijkstra.py (L18–21, L83) · bellman_ford.py",
+            desc: "Marca reservas ecológicas o resguardos protegidos (H01, H02). Cuando evitar_restringidos=True está activo, Dijkstra y Bellman-Ford vetan el nodo como paso intermedio.",
+            live: (n) => n ? (n.restriccion_ambiental ? "True (Hábitat vetado H)" : "False (Tránsito libre)") : null,
+            formulaCap: "Regla de poda ambiental en caminos mínimos",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><code>restriccion_ambiental(v) = True</code><span class="agy-op">&rArr;</span><var>w</var>(<var>u</var>,&nbsp;<var>v</var>)<span class="agy-op">=</span>&infin;&nbsp;<span class="agy-vm-math-sub">(no transitable)</span></div></div>'
+          }},
+          {{
+            name: "es_candidato_frio", type: "@property (bool)", origen: "Calculado en código", where: "src/models/nodo.py (L88–94)",
+            desc: "Propiedad booleana derivada que filtra los 5 nodos aptos para el algoritmo FLP (F01, F02, F03, A01, A02) combinando tipo, energía y ausencia de veto ecológico.",
+            live: (n) => n ? (n.es_candidato_frio ? "True (Candidato FLP válido)" : "False (No elegible)") : null,
+            formulaCap: "Predicado lógico de elegibilidad FLP (nodo.py)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>candidato</var>(<var>v</var>)<span class="agy-op">&hArr;</span>(<var>tipo</var>&nbsp;&isin;&nbsp;{{A, F}})<span class="agy-op">&and;</span><var>energ&iacute;a</var><span class="agy-op">&and;</span>&not;<var>restricci&oacute;n</var></div></div>'
+          }}
+        ]
+      }},
+      {{
+        id: 4,
+        label: "4. Conectividad y Topología",
+        intro: "Métricas estructurales derivadas directamente de las listas de adyacencia del grafo dirigido G=(V,E), fundamentales para detectar nodos concentradores (hubs) y puntos de aislamiento.",
+        vars: [
+          {{
+            name: "grado_entrada / grado_salida", type: "int (calculado)", origen: "Calculado en código", where: "grafo_logistico.py · graph_slides.py",
+            desc: "Número de aristas que llegan al vértice (deg⁻) y que salen desde él (deg⁺). Un nodo concentrador como F02 exhibe alto grado de entrada desde acopios/muelles y salidas hacia mercados.",
+            live: (n) => n ? `deg⁻ = ${{n.grado_entrada}} entrantes · deg⁺ = ${{n.grado_salida}} salientes` : null,
+            formulaCap: "Definición formal en grafo dirigido y costo espacial",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row">deg<sup>+</sup>(<var>v</var>)<span class="agy-op">=</span>|adj[<var>v</var>]|<span class="agy-vm-math-sep"></span>deg<sup>&minus;</sup>(<var>v</var>)<span class="agy-op">=</span>|{{<var>u</var>&nbsp;&isin;&nbsp;<var>V</var>&nbsp;:&nbsp;(<var>u</var>,<var>v</var>)&nbsp;&isin;&nbsp;<var>E</var>}}|</div><div class="agy-vm-math-row agy-vm-math-sub">Costo espacial de lista de adyacencia:&nbsp;<var>O</var>(|<var>V</var>|&nbsp;+&nbsp;|<var>E</var>|)</div></div>'
+          }},
+          {{
+            name: "modos_conectados", type: "list[str]", origen: "Calculado en código", where: "graph_slides.py",
+            desc: "Conjunto único de modalidades de transporte (fluvial, acceso_local, terrestre) que inciden en el vértice. Identifica automáticamente los nodos de transbordo multimodal.",
+            live: (n) => n ? ((n.modos_conectados || []).join(" + ") || "—") : null
+          }}
+        ]
+      }}
+    ]
+  }},
+  arista: {{
+    titulo: "Anatomía de la Arista — 20 Variables + 6 Fórmulas (src/models/arista.py)",
+    secciones: [
+      {{
+        id: 0,
+        label: "★ Peso Multicriterio w_ij",
+        intro: "Un camión o lancha con pescado perecedero no puede evaluarse con una sola métrica: elegir solo distancia envía la carga por trochas destruidas; elegir solo tiempo dispara combustible; elegir solo costo ignora el riesgo de derrumbe. Por eso Arista.peso() sintetiza 6 criterios normalizados en [0, 1].",
+        vars: [
+          {{
+            name: "peso() / peso_default", type: "float (calculado)", origen: "Calculado en código", where: "src/models/arista.py (L139–173)",
+            desc: "Peso escalar adimensional usado por Dijkstra, Bellman-Ford y Floyd-Warshall para encontrar rutas simultáneamente rápidas, económicas, confiables y seguras.",
+            live: (a) => a ? `w_ij = ${{a.peso_combinado.toFixed(4)}}` : null,
+            formulaCap: "Fórmula Maestra Multicriterio de 6 Factores (arista.py)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>w</var><sub><i>ij</i></sub><span class="agy-op">=</span>0.25<var>t&#770;</var><sub><i>ij</i></sub><span class="agy-op">+</span>0.20<var>c&#770;</var><sub><i>ij</i></sub><span class="agy-op">+</span>0.20<var>r</var><sub>comb</sub><span class="agy-op">+</span>0.10<var>p&#770;</var><sub><i>ij</i></sub><span class="agy-op">+</span>0.10(1&minus;<var>q</var><sub><i>ij</i></sub>)<span class="agy-op">+</span>0.05<var>P</var><sub>ret</sub></div><div class="agy-vm-math-row agy-vm-math-sub"><var>t&#770;</var><sub><i>ij</i></sub><span class="agy-op">=</span><span class="agy-frac"><span class="agy-frac-num"><var>t</var><sub>efec</sub></span><span class="agy-frac-den">48</span></span><span class="agy-vm-math-sep"></span><var>c&#770;</var><sub><i>ij</i></sub><span class="agy-op">=</span><span class="agy-frac"><span class="agy-frac-num"><var>C</var><sub>tot</sub></span><span class="agy-frac-den">5,000,000</span></span><span class="agy-vm-math-sep"></span><var>p&#770;</var><sub><i>ij</i></sub><span class="agy-op">=</span><span class="agy-frac"><span class="agy-frac-num"><var>L</var><sub><i>ij</i></sub></span><span class="agy-frac-den">100</span></span></div></div>'
+          }}
+        ]
+      }},
+      {{
+        id: 1,
+        label: "1. Cinemática y Tiempo",
+        intro: "Describen la dirección del tramo y su cinemática física real. El tiempo efectivo es la variable de mayor peso (α = 0.25) porque gobierna directamente el reloj biológico del pescado.",
+        vars: [
+          {{
+            name: "origen / destino", type: "str", origen: "Dato CSV", where: "grafo_logistico.py · dijkstra.py",
+            desc: "IDs de los vértices inicial y final que definen la dirección del arco (u → v) dentro de la lista de adyacencia del grafo dirigido.",
+            live: (a) => a ? `${{a.origen}} → ${{a.destino}}` : null
+          }},
+          {{
+            name: "distancia_km", type: "float", origen: "Dato OSRM / rios.shp", where: "aristas.csv · route_geometry.py",
+            desc: "Longitud real del tramo en kilómetros obtenida sobre el trazado vial OSRM o sobre el cauce hidrográfico real de rios.shp (no línea recta).",
+            live: (a) => a ? `${{a.distancia_km.toFixed(2)}} km` : null
+          }},
+          {{
+            name: "tiempo_h", type: "float", origen: "Dato CSV / geo_utils.py", where: "dijkstra.py · cold_chain.py · geo_utils.py (L46)",
+            desc: "Duración base del recorrido sin esperas. Cuando se estima automáticamente desde distancia y estado vial usa la velocidad efectiva.",
+            live: (a) => a ? `${{a.tiempo_h.toFixed(2)}} h` : null,
+            formulaCap: "Estimación automática de tiempo base (geo_utils.py · L68)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>t</var><sub>base</sub><span class="agy-op">=</span><span class="agy-frac"><span class="agy-frac-num"><var>d</var><sub>km</sub></span><span class="agy-frac-den"><var>v</var><sub>prom</sub> / <var>f</var><sub>v&iacute;a</sub></span></span></div></div>'
+          }},
+          {{
+            name: "flujo_vehicular → factor_flujo", type: "str → @property", origen: "Dato CSV + Derivado", where: "src/models/arista.py (L100–103)",
+            desc: "Nivel de congestión del corredor ('bajo', 'medio', 'alto'). Se transforma en un multiplicador de tiempo: bajo = 1.0, medio = 1.15, alto = 1.35.",
+            live: (a) => a ? `${{a.flujo_vehicular}} (×${{a.factor_flujo}})` : null
+          }},
+          {{
+            name: "tiempo_espera_h", type: "float", origen: "Dato CSV", where: "arista.py (L116)",
+            desc: "Horas muertas acumuladas en filas, cargue, descargue o casetas de peaje. Se suma directamente al tiempo efectivo del tramo.",
+            live: (a) => a ? `${{a.tiempo_espera_h.toFixed(2)}} h` : null
+          }},
+          {{
+            name: "tiempo_efectivo_h / velocidad_efectiva", type: "@property (float)", origen: "Calculado en código", where: "src/models/arista.py (L114–116)",
+            desc: "Tiempo real total del tramo ajustado por flujo vehicular y esperas, del cual deriva la velocidad efectiva y el término α·t̂ en el peso multicriterio.",
+            live: (a) => a ? `${{a.tiempo_efectivo_h.toFixed(3)}} h (${{a.velocidad_efectiva_kmh.toFixed(1)}} km/h)` : null,
+            formulaCap: "Cálculo de tiempo y velocidad efectivos (arista.py · L116)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>t</var><sub>efec</sub><span class="agy-op">=</span>(<var>t</var><sub>base</sub><span class="agy-op">&middot;</span><var>f</var><sub>flujo</sub>)<span class="agy-op">+</span><var>t</var><sub>espera</sub><span class="agy-vm-math-sep"></span><var>v</var><sub>efec</sub><span class="agy-op">=</span><span class="agy-frac"><span class="agy-frac-num"><var>d</var><sub>km</sub></span><span class="agy-frac-den"><var>t</var><sub>efec</sub></span></span></div></div>'
+          }}
+        ]
+      }},
+      {{
+        id: 2,
+        label: "2. Costos y Peajes",
+        intro: "Modelan el gasto monetario directo en pesos colombianos (COP) por flete y peajes. Aportan el segundo criterio de mayor peso (β = 0.20) en la función multicriterio.",
+        vars: [
+          {{
+            name: "costo_cop", type: "float", origen: "Dato CSV / Auto", where: "arista.py (L86–87)",
+            desc: "Costo del flete y combustible del tramo en COP. Si no viene especificado en el CSV, __post_init__ lo calcula automáticamente a $3,500 COP/km.",
+            live: (a) => a ? `$${{a.costo_cop.toLocaleString()}} COP` : null,
+            formulaCap: "Cálculo por defecto de flete (arista.py · L87)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>C</var><sub>flete</sub><span class="agy-op">=</span><var>d</var><sub>km</sub><span class="agy-op">&times;</span>$3,500 COP/km</div></div>'
+          }},
+          {{
+            name: "peajes / costo_peajes_cop", type: "int / float", origen: "Dato CSV / Auto", where: "arista.py (L88–89)",
+            desc: "Número de casetas de peaje en la carretera (ej. corredor Villavicencio–Bogotá) y su importe total. Por defecto se estima a $12,000 COP por caseta.",
+            live: (a) => a ? `${{a.peajes}} casetas ($${{a.costo_peajes_cop.toLocaleString()}} COP)` : null,
+            formulaCap: "Estimación de peajes por defecto (arista.py · L89)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>C</var><sub>peajes</sub><span class="agy-op">=</span><var>n</var><sub>peajes</sub><span class="agy-op">&times;</span>$12,000 COP</div></div>'
+          }},
+          {{
+            name: "costo_total_cop", type: "@property (float)", origen: "Calculado en código", where: "src/models/arista.py (L119–121, L157)",
+            desc: "Suma íntegra del costo monetario del tramo. Se normaliza dividiendo por $5,000,000 COP para ingresar como β·ĉ_ij en el peso multicriterio.",
+            live: (a) => a ? `$${{a.costo_total_cop.toLocaleString()}} COP` : null,
+            formulaCap: "Costo total y término normalizado en w_ij (arista.py · L121)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>C</var><sub>tot</sub><span class="agy-op">=</span><var>C</var><sub>flete</sub><span class="agy-op">+</span><var>C</var><sub>peajes</sub><span class="agy-vm-math-sep"></span><var>c&#770;</var><sub><i>ij</i></sub><span class="agy-op">=</span><span class="agy-frac"><span class="agy-frac-num"><var>C</var><sub>tot</sub></span><span class="agy-frac-den">5,000,000</span></span></div></div>'
+          }}
+        ]
+      }},
+      {{
+        id: 3,
+        label: "3. Riesgo, Vía y Merma",
+        intro: "Variables físicas y operativas extendidas (MCDM) que capturan la fragilidad de vías en el Meta, el riesgo térmico y de derrumbe, restricciones de carga y el deterioro esperado por tramo.",
+        vars: [
+          {{
+            name: "tipo_via", type: "str", origen: "Dato CSV", where: "eca_solutions.py (veda) · folium_map.py",
+            desc: "Modalidad física ('fluvial', 'acceso_local', 'terrestre'). Permite al Grafo Bitemporal desactivar automáticamente las 10 aristas fluviales durante la veda (abril–junio).",
+            live: (a) => a ? a.tipo_via : null
+          }},
+          {{
+            name: "estado_via → factor_estado_via", type: "str → @property", origen: "Dato CSV + Derivado", where: "src/models/arista.py (L94–97)",
+            desc: "Condición superficial de la ruta ('buena', 'regular', 'mala'). Se traduce en el multiplicador de deterioro: buena = 1.0, regular = 1.5, mala = 2.0.",
+            live: (a) => a ? `${{a.estado_via}} (×${{a.factor_estado_via}})` : null
+          }},
+          {{
+            name: "riesgo_termico / accidente / derrumbe → riesgo_combinado", type: "float → @property", origen: "Dato CSV + Calculado", where: "src/models/arista.py (L106–111)",
+            desc: "Tres riesgos normalizados [0–1]: exposición solar/calor (50%), siniestralidad vial o palizadas (25%) y caída de banca en lluvias (25%). Alimentan el término γ = 0.20.",
+            live: (a) => a ? `Térm=${{a.riesgo_termico.toFixed(2)}} · Acc=${{a.riesgo_accidente.toFixed(2)}} · Derr=${{a.riesgo_derrumbe.toFixed(2)}} → r_comb=${{a.riesgo_combinado.toFixed(4)}}` : null,
+            formulaCap: "Riesgo combinado del tramo (arista.py · L108)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>r</var><sub>comb</sub><span class="agy-op">=</span>min(0.50<var>r</var><sub>t&eacute;rm</sub><span class="agy-op">+</span>0.25<var>r</var><sub>acc</sub><span class="agy-op">+</span>0.25<var>r</var><sub>derr</sub>,&nbsp;&nbsp;1.0)</div></div>'
+          }},
+          {{
+            name: "confiabilidad_via / prob_retraso → perdida_esperada", type: "float → @property", origen: "Dato CSV + Calculado", where: "src/models/arista.py (L124–135)",
+            desc: "Confiabilidad q_ij ∈ [0,1] (penaliza incertidumbre con ε = 0.10) y probabilidad de retén/trancón P_ret (ζ = 0.05). Junto con tiempo y estado vial calculan la merma esperada L_ij (δ = 0.10).",
+            live: (a) => a ? `q=${{a.confiabilidad_via.toFixed(2)}} · P_ret=${{a.prob_retraso.toFixed(2)}} → L_ij=${{a.perdida_esperada.toFixed(2)}}%` : null,
+            formulaCap: "Porcentaje de pérdida esperada por tramo (arista.py · L128)",
+            formula: '<div class="agy-vm-math-stack"><div class="agy-vm-math-row"><var>L</var><sub><i>ij</i></sub><span class="agy-op">=</span>min(2.5<span class="agy-op">&middot;</span><var>t</var><sub>efec</sub><span class="agy-op">&middot;</span><var>f</var><sub>v&iacute;a</sub><span class="agy-op">&middot;</span>(1<span class="agy-op">+</span>0.5(1&minus;<var>q</var><sub><i>ij</i></sub>))<span class="agy-op">&middot;</span>(1<span class="agy-op">+</span>0.3<var>P</var><sub>ret</sub>),&nbsp;&nbsp;100%)</div></div>'
+          }},
+          {{
+            name: "capacidad_kg / restriccion_peso_ton / horario / num_transbordos", type: "float / str / int", origen: "Datos CSV operativos", where: "aristas.csv · eca_solutions.py · cold_chain.py",
+            desc: "Restricciones logísticas reales: cupo máximo del vehículo (300 kg canoa a 2,000 kg camión; valida hielo 1:1), límite de tonelaje en puentes rurales, ventanas horarias y número de transbordos.",
+            live: (a) => a ? `Cap: ${{a.capacidad_kg}} kg · Puente: ${{a.restriccion_peso_ton}} t · Horario: ${{a.horario_restriccion}}` : null
+          }}
+        ]
+      }}
+    ]
+  }}
+}};
+
+function agyAbrirModalVariables(entidad, seccionId) {{
+  const backdrop = document.getElementById("agy-modal-backdrop");
+  const content = document.getElementById("agy-modal-content");
+  if (!backdrop || !content) return;
+
+  const ent = entidad === "arista" ? "arista" : "nodo";
+  const cfg = AGY_VARS_DOCS[ent];
+  const sec = cfg.secciones.find(s => s.id === seccionId) || cfg.secciones[0];
+
+  // Obtener instancia seleccionada actualmente para mostrar valores reales en vivo
+  let liveObj = null;
+  let liveLabel = "";
+  if (ent === "nodo") {{
+    if (agySeleccion && agySeleccion.tipo === "nodo") {{
+      liveObj = AGY_DATA.nodos.find(x => x.id === agySeleccion.id) || null;
+    }}
+    if (liveObj) liveLabel = `Vértice activo: ${{liveObj.id}} (${{liveObj.nombre}})`;
+  }} else {{
+    if (agySeleccion && agySeleccion.tipo === "arista") {{
+      liveObj = AGY_DATA.aristas.find(x => x.id === agySeleccion.id) || null;
+    }}
+    if (liveObj) liveLabel = `Arista activa: ${{liveObj.origen}} → ${{liveObj.destino}}`;
+  }}
+
+  const switchHtml = `
+    <div class="agy-vm-switch">
+      <button type="button" class="agy-vm-entity-btn ${{ent === 'nodo' ? 'active' : ''}}" onclick="agyAbrirModalVariables('nodo', 1)">Nodos · 12 Variables (nodo.py)</button>
+      <button type="button" class="agy-vm-entity-btn ${{ent === 'arista' ? 'active' : ''}}" onclick="agyAbrirModalVariables('arista', 0)">Aristas · 20 Variables + Fórmulas (arista.py)</button>
+    </div>
+  `;
+
+  const tabsHtml = `
+    <div class="agy-vm-tabs">
+      ${{cfg.secciones.map(s => `
+        <button type="button" class="agy-vm-tab ${{s.id === sec.id ? 'active' : ''}}" onclick="agyAbrirModalVariables('${{ent}}', ${{s.id}})">${{s.label}}</button>
+      `).join("")}}
+    </div>
+  `;
+
+  const cardsHtml = sec.vars.map(v => {{
+    const isCalc = v.origen.toLowerCase().includes("calculado") || v.origen.toLowerCase().includes("derivado");
+    const liveVal = (liveObj && typeof v.live === "function") ? v.live(liveObj) : null;
+    return `
+      <div class="agy-vm-card">
+        <div class="agy-vm-card-top">
+          <span class="agy-vm-name">${{v.name}}</span>
+          <span class="agy-vm-badges">
+            <span class="agy-vm-tag">${{v.type}}</span>
+            <span class="agy-vm-tag ${{isCalc ? 'calc' : ''}}">${{v.origen}}</span>
+          </span>
+        </div>
+        <p class="agy-vm-desc">${{v.desc}}</p>
+        ${{v.formula ? `
+          <div class="agy-vm-formula">
+            <div class="agy-vm-formula-cap">${{v.formulaCap || "Fórmula aplicada"}}</div>
+            ${{v.formula}}
+          </div>
+        ` : ""}}
+        <div class="agy-vm-meta">
+          <span>Uso en código: <code>${{v.where}}</code></span>
+          ${{liveVal !== null ? `<span class="agy-vm-live">Valor actual: <strong>${{liveVal}}</strong></span>` : ""}}
+        </div>
+      </div>
+    `;
+  }}).join("");
+
+  content.innerHTML = `
+    <span class="agy-badge" style="color:var(--color-warm-cream);margin-bottom:8px;">DICCIONARIO TÉCNICO Y FÓRMULAS DEL GRAFO${{liveLabel ? " · " + liveLabel : ""}}</span>
+    <h2 id="agy-modal-title" style="margin:0 0 14px 0;font-size:22px;line-height:1.25;">${{cfg.titulo}}</h2>
+    ${{switchHtml}}
+    ${{tabsHtml}}
+    <p class="agy-vm-lead">${{sec.intro}}</p>
+    <div class="agy-vm-list">${{cardsHtml}}</div>
+  `;
+  backdrop.classList.add("open");
+}}
+
 function agyActualizarSimuladorMulticriterio(edgeId) {{
   const a = (AGY_DATA.aristas || []).find(x => x.id === edgeId) || AGY_DATA.aristas[0];
   const box = document.getElementById("agy-ed-multicriterio-box");
@@ -5294,9 +6614,1041 @@ function agyActualizarSimuladorMulticriterio(edgeId) {{
   `;
 }}
 
+let agyModoDestinoFLP = "PG";
+let agyCandidatoFocusFLP = "F02";
+
+const AGY_FLP_TIP_CATALOG = {{
+  // ── 3.1 VARIABLES DE LOS NODOS (nodo.py) ──
+  "node_id": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "id",
+    fuente: "nodos_pesca.csv · nodos_centros.csv · nodos_destinos.csv",
+    tipo: "str",
+    rol: "Clave primaria en GrafoLogistico (Tabla Hash O(1)). Identifica orígenes P01..P07, candidatos F01..F03, A01..A02 y destinos V_PG1/V_BOG1.",
+    formula: "obtener_nodo(id) → O(1) en dict._nodos"
+  }},
+  "node_nombre": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "nombre",
+    fuente: "Los 3 archivos CSV de nodos",
+    tipo: "str",
+    rol: "Etiqueta descriptiva real de la asociación pesquera, centro frigorífico, acopio, muelle o mercado mayorista.",
+    formula: "Metadato legible en informes, mapas y tablas"
+  }},
+  "node_tipo": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "tipo",
+    fuente: "Los 3 archivos CSV (P, A, F, M, D, H, V)",
+    tipo: "str",
+    rol: "Determina candidatos FLP (tipo ∈ {{'F','A'}}), paradas con abatimiento térmico en cold_chain.py, transbordos en M (+0.25 h) y multiplicador ×1.5 en D.",
+    formula: "es_candidato_frio: tipo in ('F', 'A')"
+  }},
+  "node_coords": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "latitud, longitud",
+    fuente: "Los 3 CSV (origen: constants.py, manual commit 9af49ef, puntos_campo.geojson)",
+    tipo: "float (WGS84)",
+    rol: "Ubicación geográfica para cálculo Haversine, trazado OSRM/ríos y posicionamiento en Mapa SIG.",
+    formula: "d = 2·R·arcsin(√(sin²(Δφ/2) + cos φ₁·cos φ₂·sin²(Δλ/2)))"
+  }},
+  "node_produccion": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "produccion_kg_dia",
+    fuente: "nodos_pesca.csv",
+    tipo: "float (kg/día)",
+    rol: "Oferta diaria pescada por asociación (265.75 kg/día totales). Entra en la restricción de capacidad del FLP (MILP/Greedy) y como lote inicial en SimuladorCadenaFrio.",
+    formula: "Σ_i (produccion_i · x_ij) ≤ capacidad_frio_kg_j · y_j"
+  }},
+  "node_capacidad": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "capacidad_frio_kg",
+    fuente: "nodos_centros.csv",
+    tipo: "float (kg)",
+    rol: "Capacidad máxima de almacenamiento frigorífico (F01=2,000 · F02=5,000 · F03=4,000 · A01=1,500 · A02=1,200 kg). Además en cold_chain.py activa el reset térmico si > 0.",
+    formula: "tiene_frio = (tipo ∈ {{'F','A'}}) ∧ (capacidad_frio_kg > 0)"
+  }},
+  "node_costo_fijo": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "costo_fijo",
+    fuente: "nodos_centros.csv",
+    tipo: "float (COP/mes)",
+    rol: "Costo fijo mensual f_j en facility_location.py (F01=$2.5M, F02=$3.0M, F03=$2.8M, A01=$1.2M, A02=$1.0M). NOTA: EvaluadorEscenarios usa la constante uniforme $5.0M COP/mes por planta.",
+    formula: "min Z = Σ_j f_j·y_j + Σ_i Σ_j c_ij·x_ij"
+  }},
+  "node_energia": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "tiene_energia",
+    fuente: "nodos_centros.csv",
+    tipo: "bool",
+    rol: "Filtro duro de elegibilidad en Nodo.es_candidato_frio. Descarta automáticamente a A03 (Acopio Iteviare, tiene_energia=False).",
+    formula: "es_candidato_frio requiere tiene_energia == True"
+  }},
+  "node_agua": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "tiene_agua",
+    fuente: "nodos_centros.csv",
+    tipo: "bool",
+    rol: "Atributo sanitario de infraestructura (disponibilidad de agua potable para fabricación de hielo en escarcha 1:1 y lavado).",
+    formula: "Informativo en ficha de infraestructura (no bloquea FLP)"
+  }},
+  "node_muelle": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "tiene_muelle",
+    fuente: "nodos_centros.csv",
+    tipo: "bool",
+    rol: "Indica si el punto cuenta con embarcadero fluvial para descarga directa de canoas.",
+    formula: "Informativo / coherencia multimodal (fluvial ↔ terrestre)"
+  }},
+  "node_restriccion": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "restriccion_ambiental",
+    fuente: "nodos_centros.csv",
+    tipo: "bool",
+    rol: "True en H01 (Humedal Manacacías) y H02 (Reserva Corocito). Bloquea el paso intermedio en Dijkstra, Bellman-Ford y Floyd-Warshall cuando evitar_restringidos=True, y excluye al nodo del FLP.",
+    formula: "Si u.restriccion_ambiental → omitir u como nodo intermedio"
+  }},
+  "node_es_candidato": {{
+    cat: "PROPIEDAD CALCULADA · nodo.py",
+    title: "es_candidato_frio",
+    fuente: "Propiedad @property en src/models/nodo.py",
+    tipo: "bool (calculada)",
+    rol: "Define el conjunto F de 5 candidatos válidos: F01, F02, A01, A02, F03 (descarta A03 por energía y H01/H02 por restricción ambiental).",
+    formula: "tipo in ('F','A') and tiene_energia and not restriccion_ambiental"
+  }},
+  "node_metadata": {{
+    cat: "VARIABLE DE NODO · nodo.py",
+    title: "metadata (rio, pescadores, demanda_kg_dia)",
+    fuente: "nodos_pesca.csv · nodos_destinos.csv",
+    tipo: "dict",
+    rol: "Almacena cuenca hidrográfica, número censado de pescadores (114 en 7 asociaciones) y demanda diaria de los mercados (V_PG1, V_BOG1).",
+    formula: "Metadatos contextuales para reportes e itinerarios"
+  }},
+  // ── 3.2 VARIABLES DE LAS ARISTAS (arista.py) ──
+  "edge_extremos": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "origen, destino",
+    fuente: "aristas.csv (41 aristas dirigidas)",
+    tipo: "str",
+    rol: "Definen la topología dirigida E ⊆ V × V en la Lista de Adyacencia. Explican por qué F01 no recibe flujo del sur (∞) y por qué F03 no retorna a V_PG1.",
+    formula: "_adyacencia[origen].append(arista)"
+  }},
+  "edge_distancia": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "distancia_km",
+    fuente: "aristas.csv",
+    tipo: "float (km)",
+    rol: "Longitud física del tramo (ej. F02→F03 = 126.0 km por RN 40; P05→V_PG1 = 63.0 km totales). Usada como criterio alternativo en Dijkstra e itinerarios.",
+    formula: "d_total = Σ distancia_km(e)"
+  }},
+  "edge_tiempo": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "tiempo_h",
+    fuente: "aristas.csv",
+    tipo: "float (horas)",
+    rol: "CLAVE PRINCIPAL en la matriz 7×5 de facility_location.py (criterio='tiempo_h') y base del deterioro térmico en SimuladorCadenaFrio.",
+    formula: "t_ruta = Σ tiempo_h(e) ≤ 4.0 h (límite FAO)"
+  }},
+  "edge_costo_base": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "costo_cop",
+    fuente: "aristas.csv",
+    tipo: "float (COP)",
+    rol: "Flete base de transporte del tramo. Se suma con costo_peajes_cop para obtener costo_total_cop en MILP FLP y EvaluadorEscenarios.",
+    formula: "costo_total_cop = costo_cop + costo_peajes_cop"
+  }},
+  "edge_peajes": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "peajes, costo_peajes_cop",
+    fuente: "aristas.csv",
+    tipo: "int, float (COP)",
+    rol: "Número de casetas y valor de peajes viales (ej. F02→F03: 1 peaje = $3,000 COP). Integrado al costo total de transporte.",
+    formula: "C_transporte(ruta) = Σ (costo_cop + costo_peajes_cop)"
+  }},
+  "edge_tipo_via": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "tipo_via",
+    fuente: "aristas.csv (fluvial | acceso_local | terrestre)",
+    tipo: "str",
+    rol: "Separa las vistas Vial (Slide 3), Ríos (Slide 4) y Mixto (Slide 5), y define el estilo de trazado (rios.shp vs OSRM).",
+    formula: "tipo_via ∈ {{'fluvial', 'acceso_local', 'terrestre'}}"
+  }},
+  "edge_estado_via": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "estado_via (factor_estado_via)",
+    fuente: "aristas.csv (buena=1.0 · regular=1.2 · mala=1.5 · critica=2.0)",
+    tipo: "str → float",
+    rol: "Penaliza tiempo_efectivo_h en el peso multicriterio según calidad física de carretera o trocha.",
+    formula: "t_ef = tiempo_h · factor_estado_via · factor_flujo + tiempo_espera_h"
+  }},
+  "edge_flujo": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "flujo_vehicular (factor_flujo)",
+    fuente: "aristas.csv (bajo=1.0 · medio=1.1 · alto=1.25)",
+    tipo: "str → float",
+    rol: "Multiplica el tiempo efectivo por congestión vehicular en corredores como la Ruta Nacional 40.",
+    formula: "t_ef = tiempo_h · f_estado · f_flujo + t_espera"
+  }},
+  "edge_espera": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "tiempo_espera_h",
+    fuente: "aristas.csv",
+    tipo: "float (horas)",
+    rol: "Tiempo de espera operativo en el tramo (ej. F02→F03 = 0.05 h), sumado directamente en tiempo_efectivo_h.",
+    formula: "t_ef = tiempo_h · f_estado · f_flujo + tiempo_espera_h"
+  }},
+  "edge_tiempo_ef": {{
+    cat: "PROPIEDAD CALCULADA · arista.py",
+    title: "tiempo_efectivo_h",
+    fuente: "Propiedad @property en src/models/arista.py",
+    tipo: "float (horas)",
+    rol: "Tiempo real ajustado por estado de vía, flujo y espera. Alimenta el factor α (0.25) del peso multicriterio y la pérdida esperada L_ij.",
+    formula: "t_ef = tiempo_h · f_estado · f_flujo + tiempo_espera_h"
+  }},
+  "edge_costo_total": {{
+    cat: "PROPIEDAD CALCULADA · arista.py",
+    title: "costo_total_cop",
+    fuente: "Propiedad @property en src/models/arista.py",
+    tipo: "float (COP)",
+    rol: "Suma flete base + peajes. Usada como costo de asignación c_ij en MILP FLP, costo de transporte en EvaluadorEscenarios y factor β (0.20) multicriterio.",
+    formula: "C_tot = costo_cop + costo_peajes_cop"
+  }},
+  "edge_riesgos": {{
+    cat: "VARIABLES DE ARISTA · arista.py",
+    title: "riesgo_termico, riesgo_accidente, riesgo_derrumbe",
+    fuente: "aristas.csv (escala 0.0 – 1.0)",
+    tipo: "float [0, 1]",
+    rol: "Componen riesgo_combinado con ponderación 50% térmico + 30% accidente + 20% derrumbe para el factor γ (0.20) del peso multicriterio.",
+    formula: "r_comb = 0.50·r_term + 0.30·r_acc + 0.20·r_derr"
+  }},
+  "edge_perdida": {{
+    cat: "PROPIEDAD CALCULADA · arista.py",
+    title: "perdida_esperada (L_ij)",
+    fuente: "Propiedad @property en src/models/arista.py",
+    tipo: "float (%)",
+    rol: "Porcentaje esperado de pérdida del lote en el tramo según tiempo efectivo y riesgo térmico. Alimenta el factor δ (0.10) del peso multicriterio.",
+    formula: "p_esp = min(100, t_ef · 2.5 · (1 + 2.5 · r_term))"
+  }},
+  "edge_confiabilidad": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "confiabilidad_via (q_ij)",
+    fuente: "aristas.csv (0.0 – 1.0)",
+    tipo: "float [0, 1]",
+    rol: "Probabilidad de operatividad continua del corredor. Su complemento (1 − q_ij) aporta el factor ε (0.10) en peso_combinado.",
+    formula: "término_ε = 0.10 · (1 − confiabilidad_via)"
+  }},
+  "edge_retraso": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "prob_retraso (P_ret)",
+    fuente: "aristas.csv (0.0 – 1.0)",
+    tipo: "float [0, 1]",
+    rol: "Probabilidad de demora imprevista por clima/tráfico/cauce. Aporta el factor ζ (0.05) en peso_combinado.",
+    formula: "término_ζ = 0.05 · prob_retraso"
+  }},
+  "edge_peso": {{
+    cat: "PROPIEDAD CALCULADA · arista.py",
+    title: "peso_combinado (w_ij)",
+    fuente: "Propiedad @property en src/models/arista.py (ADR-02)",
+    tipo: "float (adimensional)",
+    rol: "Peso multicriterio de 6 factores usado por Dijkstra para seleccionar rutas en EvaluadorEscenarios e itinerarios.",
+    formula: "w = 0.25·(t_ef/48) + 0.20·(C_tot/5M) + 0.20·r_comb + 0.10·(p_esp/100) + 0.10·(1−q) + 0.05·P_ret"
+  }},
+  "edge_capacidad": {{
+    cat: "VARIABLE DE ARISTA · arista.py",
+    title: "capacidad_kg, restriccion_peso_ton, horario_restriccion",
+    fuente: "aristas.csv",
+    tipo: "float, float, str",
+    rol: "Capacidad física del vehículo/lancha (validada para masa bruta 2× con hielo 1:1 = 531.5 kg/día) y restricciones viales.",
+    formula: "carga_bruta(pescado + hielo 1:1) ≤ capacidad_kg"
+  }},
+  // ── 3.3 CONSTANTES DEL MODELO (constants.py) ──
+  "const_tmax": {{
+    cat: "CONSTANTE · constants.py",
+    title: "TIEMPO_MAX_SIN_FRIO_H = 4.0 h",
+    fuente: "src/utils/constants.py (Codex Alimentarius FAO/OMS)",
+    tipo: "float (4.0 horas = 240 min)",
+    rol: "Umbral máximo de cobertura sanitaria en facility_location.py, límite de poda en dijkstra_con_cota_inocuidad y criterio cumple_limite en cold_chain.py.",
+    formula: "t_sin_frío ≤ 4.0 h (previene formación irreversible de histamina)"
+  }},
+  "const_temp": {{
+    cat: "CONSTANTE · constants.py",
+    title: "TEMP_AMBIENTE_LLANOS_C = 30.0 °C / TEMP_OBJETIVO_C = 0.0 °C",
+    fuente: "src/utils/constants.py",
+    tipo: "float (°C)",
+    rol: "Temperatura ambiente de Puerto Gaitán (30 °C → tasa base 2.5%/h) vs. temperatura de conservación con hielo 1:1 (0 °C → vida útil 360 h).",
+    formula: "T_amb = 30.0 °C → r(30°C) = 2.5%/h · T_obj = 0.0 °C"
+  }},
+  "const_deterioro": {{
+    cat: "CONSTANTE · constants.py",
+    title: "FACTOR_DETERIORO_ZONA_D = 1.5",
+    fuente: "src/utils/constants.py (ADR-04)",
+    tipo: "float (×1.5)",
+    rol: "Multiplica el deterioro del tramo entrante al cruzar una zona crítica D01 (Iteviare) o D02 (La Culebra): pasa de 2.5%/h a 3.75%/h.",
+    formula: "Δd_D = calcular_deterioro(t, 30°C) × 1.5"
+  }},
+  "const_muelle": {{
+    cat: "CONSTANTE · constants.py",
+    title: "TIEMPO_TRANSBORDO_MUELLE_H = 0.25 h",
+    fuente: "src/utils/constants.py (ADR-04)",
+    tipo: "float (0.25 h = 15 min)",
+    rol: "Tiempo de espera sin frío añadido al cruzar un muelle M01/M02/M03 en SimuladorCadenaFrio (transbordo fluvial → terrestre).",
+    formula: "t_tramo_M = tiempo_h + 0.25 h"
+  }},
+  "const_perdida_kg": {{
+    cat: "CONSTANTE · constants.py",
+    title: "COSTO_PERDIDA_KG = $12,000 COP/kg",
+    fuente: "src/utils/constants.py",
+    tipo: "int ($12,000 COP)",
+    rol: "Valorización económica de cada kilogramo de pescado deteriorado (merma) en SimuladorCadenaFrio y EvaluadorEscenarios.",
+    formula: "C_merma = kg_perdidos × $12,000 COP/kg"
+  }},
+  "const_fijo_esc": {{
+    cat: "CONSTANTE · constants.py",
+    title: "COSTO_FIJO_CENTRO_FRIO = $5,000,000 COP/mes",
+    fuente: "src/utils/constants.py",
+    tipo: "int ($5,000,000 COP/mes)",
+    rol: "Costo fijo mensual uniforme que EvaluadorEscenarios multiplica por num_centros (1 planta = $5M, 3 plantas = $15M → ahorro de $10M COP/mes).",
+    formula: "C_fijo_escenario = num_centros × $5,000,000 COP/mes"
+  }},
+  "const_pesos": {{
+    cat: "CONSTANTES · constants.py",
+    title: "α=0.25 · β=0.20 · γ=0.20 · δ=0.10 · ε=0.10 · ζ=0.05",
+    fuente: "src/utils/constants.py (ADR-02)",
+    tipo: "float (suman 0.90)",
+    rol: "Ponderaciones de los 6 factores del peso multicriterio Arista.peso_combinado.",
+    formula: "w = 0.25·t̂ + 0.20·ĉ + 0.20·r_comb + 0.10·p̂ + 0.10·(1−q) + 0.05·P_ret"
+  }},
+  // ── KPIs & PIPELINE ──
+  "kpi_solo_f02": {{
+    cat: "RESULTADO ÓPTIMO FLP",
+    title: "Solo F02 (Centro Frío Puerto Gaitán)",
+    fuente: "facility_location.py + scenario_evaluator.py",
+    tipo: "1 planta abierta",
+    rol: "Único candidato que alcanza cobertura 7/7 (100%) en la primera iteración Greedy y solución óptima del MILP PuLP.",
+    formula: "Uso = 265.75 / 5,000 = 5.315% de capacidad frigorífica"
+  }},
+  "kpi_cobertura_fao": {{
+    cat: "COBERTURA SANITARIA FAO",
+    title: "7/7 asociaciones ≤ 4.0 h",
+    fuente: "dijkstra.py (tiempo_h) & dijkstra_con_cota_inocuidad",
+    tipo: "100.0%",
+    rol: "En FLP (suma pura de aristas) el máximo es P05→F02 = 2.65 h. Con poda TCSPP que reinicia en A03/A01 el tramo máximo sin frío es 2.10 h.",
+    formula: "max_i d_tiempo(i, F02) = 2.65 h ≤ 4.00 h (margen +1.35 h)"
+  }},
+  "kpi_costo_opt": {{
+    cat: "COSTO TOTAL MENSUAL",
+    title: "$13.02M Bogotá · $5.52M Local",
+    fuente: "scenario_evaluator.py (EvaluadorEscenarios)",
+    tipo: "COP / mes",
+    rol: "Suma costo fijo uniforme ($5,000,000) + transporte mensual (×30 días) + costo de merma térmica ($12,000/kg).",
+    formula: "C_total = $5,000,000 + C_transporte + C_merma"
+  }},
+  "kpi_ahorro_flp": {{
+    cat: "AHORRO FRENTE A 3 PLANTAS",
+    title: "−$10,000,000 COP/mes (−$120M/año)",
+    fuente: "Comparación Escenario 3 (Solo F02) vs Escenario 5 (F01+F02+F03)",
+    tipo: "−43.4% Bogotá / −64.4% Local",
+    rol: "Evita abrir F01 y F03 simultáneamente ($15M fijo vs $5M fijo) manteniendo exactamente la misma cobertura 100% y la misma merma.",
+    formula: "ΔC = $23,023,272 − $13,023,272 = $10,000,000 COP/mes"
+  }},
+  "pipe_csv": {{
+    cat: "PASO 1 DEL PIPELINE · ENTRADA",
+    title: "data/csv/nodos_centros.csv (13 nodos)",
+    fuente: "src/utils/data_loader.py → cargar_grafo()",
+    tipo: "CSV tabular",
+    rol: "Contiene 3 Frío (F01–F03), 3 Acopio (A01–A03), 3 Muelles (M01–M03), 2 Deterioro (D01–D02) y 2 Hábitats (H01–H02).",
+    formula: "Total grafo G=(V,E): 7 P + 13 Centros + 5 V = 25 vértices"
+  }},
+  "pipe_filtro": {{
+    cat: "PASO 2 DEL PIPELINE · FILTRO BOOLEANO",
+    title: "GrafoLogistico.candidatos_frio()",
+    fuente: "src/models/nodo.py + src/models/grafo_logistico.py",
+    tipo: "Filtro O(|V|)",
+    rol: "Evalúa la propiedad booleana es_candidato_frio en cada vértice antes de ejecutar la matriz de Dijkstra.",
+    formula: "tipo ∈ {{'F','A'}} ∧ tiene_energia=True ∧ ¬restriccion_ambiental"
+  }},
+  "pipe_salida": {{
+    cat: "PASO 3 DEL PIPELINE · CONJUNTO F",
+    title: "5 Candidatos Válidos + A03 Descartado",
+    fuente: "Salida de grafo.candidatos_frio()",
+    tipo: "List[Nodo] (len = 5)",
+    rol: "Pasan F01, F02, A01, A02, F03. Se rechaza A03 (Acopio Iteviare) por tiene_energia=False y H01/H02 por restriccion_ambiental=True.",
+    formula: "F = {{F01, F02, A01, A02, F03}} → Matriz Dijkstra 7 × 5 = 35 corridas"
+  }}
+}};
+
+function agyHtmlTipDesdeObj(info) {{
+  if (!info) return "";
+  const filas = [];
+  if (info.fuente) filas.push(`<div class="agy-ht-row"><span class="agy-ht-k">Archivo fuente / origen</span><span class="agy-ht-v"><code>${{info.fuente}}</code></span></div>`);
+  if (info.tipo) filas.push(`<div class="agy-ht-row"><span class="agy-ht-k">Tipo / Valor</span><span class="agy-ht-v">${{info.tipo}}</span></div>`);
+  if (info.rol) filas.push(`<div class="agy-ht-row"><span class="agy-ht-k">Rol exacto en el cálculo</span><span class="agy-ht-v">${{info.rol}}</span></div>`);
+  if (info.formula) filas.push(`<div class="agy-ht-row"><span class="agy-ht-k">Fórmula / Regla aplicada</span><span class="agy-ht-v"><code>${{info.formula}}</code></span></div>`);
+  return `
+    <span class="agy-ht-cat">${{info.cat || "DETALLE TÉCNICO"}}</span>
+    <div class="agy-ht-title">${{info.title || ""}}</div>
+    <div class="agy-ht-grid">${{filas.join("")}}</div>
+  `;
+}}
+
+function agyResolverContenidoHoverTip(el) {{
+  const key = el.getAttribute("data-flp-tip");
+  if (key && AGY_FLP_TIP_CATALOG[key]) {{
+    return agyHtmlTipDesdeObj(AGY_FLP_TIP_CATALOG[key]);
+  }}
+  const cellAttr = el.getAttribute("data-flp-cell");
+  if (cellAttr) {{
+    const [origId, candId] = cellAttr.split("|");
+    const det = AGY_DATA.flp_detallado || {{}};
+    const fila = (det.matriz_7x5 || []).find(r => r.origen_id === origId);
+    const c = fila && fila.celdas ? fila.celdas[candId] : null;
+    if (c) {{
+      const tramosStr = (c.tramos || []).map(t => `${{t.u}}→${{t.v}} (${{t.tiempo_h.toFixed(2)}} h)`).join(" + ");
+      return agyHtmlTipDesdeObj({{
+        cat: `CELDA DIJKSTRA 7×5 · ${{origId}} → ${{candId}}`,
+        title: c.encontrado ? `${{c.tiempo_h.toFixed(2)}} h (${{c.cumple_fao ? "✓ Cumple FAO ≤ 4.0 h" : "⚠ Viola FAO > 4.0 h"}})` : "∞ (No alcanzable)",
+        fuente: "src/algorithms/dijkstra.py (criterio='tiempo_h', evitar_restringidos=True)",
+        tipo: c.encontrado ? `Distancia: ${{c.dist_km}} km · Costo flete+peajes: $${{(c.costo_cop || 0).toLocaleString()}} COP` : "Sin camino dirigido en G=(V,E)",
+        rol: c.encontrado ? `Ruta exacta: ${{c.camino.join(" → ")}}${{c.nota ? " · " + c.nota : ""}}` : (c.nota || "No existe trayectoria dirigida."),
+        formula: c.encontrado ? (tramosStr + ` = ${{c.tiempo_h.toFixed(2)}} h`) : "d_tiempo(u, v) = +∞"
+      }});
+    }}
+  }}
+  const stepAttr = el.getAttribute("data-flp-step");
+  if (stepAttr !== null && stepAttr !== "") {{
+    const idx = parseInt(stepAttr, 10);
+    const pasos = (AGY_DATA.flp_detallado && AGY_DATA.flp_detallado.simulacion_p05 && AGY_DATA.flp_detallado.simulacion_p05.pasos) || [];
+    const p = pasos[idx];
+    if (p) {{
+      return agyHtmlTipDesdeObj({{
+        cat: `PASO ${{p.paso}} · SIMULACIÓN TÉRMICA P05 (cold_chain.py)`,
+        title: `${{p.nodo_id}} · ${{p.nombre}} (Tipo ${{p.tipo}})`,
+        fuente: "SimuladorCadenaFrio.simular_ruta(ruta_p05, 30.0 kg)",
+        tipo: `Temp: ${{p.temp_c}} °C · Carga viva: ${{p.kg_actual.toFixed(3)}} kg (Δ = −${{p.kg_perdidos_paso.toFixed(3)}} kg)`,
+        rol: `Efecto: ${{p.efecto}} · Tiempo acum.: ${{p.tiempo_acum_h.toFixed(2)}} h · Timer sin frío: ${{p.tiempo_sin_frio_h.toFixed(2)}} h · Det. acum.: ${{p.det_acum_pct.toFixed(3)}}%`,
+        formula: p.regla_matematica
+      }});
+    }}
+  }}
+  const escAttr = el.getAttribute("data-flp-esc");
+  if (escAttr) {{
+    const [modo, idxStr] = escAttr.split("|");
+    const idx = parseInt(idxStr, 10);
+    const lista = modo === "PG" ? (AGY_DATA.escenarios_pg || []) : (AGY_DATA.escenarios_bog || []);
+    const e = lista[idx];
+    if (e) {{
+      const fijoM = (e.num_centros * 5).toFixed(0);
+      return agyHtmlTipDesdeObj({{
+        cat: `ESCENARIO ${{idx + 1}} · ${{modo === "PG" ? "LOCAL (V_PG1)" : "BOGOTÁ (V_BOG1)"}}`,
+        title: e.nombre,
+        fuente: "src/optimization/scenario_evaluator.py → EvaluadorEscenarios",
+        tipo: `Total: $${{Math.round(e.costo_total_cop).toLocaleString()}} COP/mes · Unitario: $${{Math.round(e.costo_por_kg_cop).toLocaleString()}} COP/kg`,
+        rol: `Centros: [${{(e.centros_ids || []).join(", ") || "Ninguno"}}] · Cobertura térmica: ${{e.cumplimiento_termico_pct.toFixed(1)}}% · Merma: ${{e.pct_perdida.toFixed(2)}}% (${{e.kg_perdido.toFixed(1)}} kg/día)`,
+        formula: `C_total = (${{e.num_centros}} × $5M = $${{fijoM}}M fijo) + C_transporte + C_merma`
+      }});
+    }}
+  }}
+  const provAttr = el.getAttribute("data-flp-prov");
+  if (provAttr) {{
+    const cands = (AGY_DATA.flp_detallado && AGY_DATA.flp_detallado.candidatos) || [];
+    const c = cands.find(x => x.id === provAttr);
+    if (c) {{
+      return agyHtmlTipDesdeObj({{
+        cat: `ORIGEN DE COORDENADAS · ${{c.origen_commit}}`,
+        title: `${{c.id}} · ${{c.nombre}} (${{c.lat}}, ${{c.lon}})`,
+        fuente: `data/csv/nodos_centros.csv (${{c.origen_commit}})`,
+        tipo: `Tipo ${{c.tipo}} · Cap: ${{c.capacidad_frio_kg.toLocaleString()}} kg · Fijo CSV: $${{c.costo_fijo_csv.toLocaleString()}} COP`,
+        rol: `${{c.origen_coords}}. ${{c.regla}}`,
+        formula: c.es_candidato ? `Candidato válido → Cobertura ${{c.cobertura_n}}/7 (${{c.cobertura_pct.toFixed(1)}}%)` : "DESCARTADO: tiene_energia = False"
+      }});
+    }}
+  }}
+  return "";
+}}
+
+function agyPosicionarHoverTip(ev) {{
+  const tip = document.getElementById("agy-flp-hover-tip");
+  if (!tip || !tip.classList.contains("visible")) return;
+  const pad = 14;
+  const tw = tip.offsetWidth || 370;
+  const th = tip.offsetHeight || 170;
+  let x = ev.clientX + 16;
+  let y = ev.clientY + 16;
+  if (x + tw + pad > window.innerWidth) x = Math.max(pad, ev.clientX - tw - 16);
+  if (y + th + pad > window.innerHeight) y = Math.max(pad, ev.clientY - th - 16);
+  tip.style.left = x + "px";
+  tip.style.top = y + "px";
+}}
+
+let agyHoverTooltipsInit = false;
+function agyInicializarHoverTooltipsFLP() {{
+  if (agyHoverTooltipsInit) return;
+  agyHoverTooltipsInit = true;
+  const tip = document.getElementById("agy-flp-hover-tip");
+  if (!tip) return;
+  let activeEl = null;
+
+  document.addEventListener("mouseover", (ev) => {{
+    const target = ev.target && ev.target.closest
+      ? ev.target.closest("[data-flp-tip],[data-flp-cell],[data-flp-step],[data-flp-esc],[data-flp-prov]")
+      : null;
+    if (!target) return;
+    if (target !== activeEl) {{
+      const html = agyResolverContenidoHoverTip(target);
+      if (!html) return;
+      activeEl = target;
+      tip.innerHTML = html;
+      tip.classList.add("visible");
+      tip.setAttribute("aria-hidden", "false");
+    }}
+    agyPosicionarHoverTip(ev);
+  }});
+
+  document.addEventListener("mousemove", (ev) => {{
+    if (!activeEl) return;
+    const stillInside = ev.target && ev.target.closest
+      ? ev.target.closest("[data-flp-tip],[data-flp-cell],[data-flp-step],[data-flp-esc],[data-flp-prov]")
+      : null;
+    if (!stillInside) {{
+      activeEl = null;
+      tip.classList.remove("visible");
+      tip.setAttribute("aria-hidden", "true");
+      return;
+    }}
+    agyPosicionarHoverTip(ev);
+  }});
+
+  document.addEventListener("mouseout", (ev) => {{
+    if (!activeEl) return;
+    const rel = ev.relatedTarget && ev.relatedTarget.closest
+      ? ev.relatedTarget.closest("[data-flp-tip],[data-flp-cell],[data-flp-step],[data-flp-esc],[data-flp-prov]")
+      : null;
+    if (!rel) {{
+      activeEl = null;
+      tip.classList.remove("visible");
+      tip.setAttribute("aria-hidden", "true");
+    }}
+  }});
+}}
+
+function agyCambiarSubtabFLP(idx) {{
+  for (let i = 0; i < 4; i++) {{
+    document.getElementById(`agy-flp-tab-${{i}}`)?.classList.toggle("active", i === idx);
+    document.getElementById(`agy-flp-pane-${{i}}`)?.classList.toggle("active", i === idx);
+  }}
+}}
+
+function agySeleccionarCandidatoFLP(candId) {{
+  agyCandidatoFocusFLP = candId || "F02";
+  agyRenderizarMatriz7x5FLP();
+  agyCambiarSubtabFLP(1);
+}}
+
+function agyRenderizarWorkspaceFLP() {{
+  const det = AGY_DATA.flp_detallado || {{}};
+  const cands = det.candidatos || [];
+
+  // ── SUBTAB 0: ORIGEN, FILTRO Y CATÁLOGO INTERACTIVO DE VARIABLES ──
+  const originWrap = document.getElementById("agy-flp-origin-wrap");
+  if (originWrap) {{
+    const filasProv = cands.map(c => `
+      <tr class="esc-hoverable ${{c.id === 'F02' ? 'esc-opt' : ''}}" data-flp-prov="${{c.id}}">
+        <td style="font-family:var(--font-mono);font-weight:700;">${{c.id === 'F02' ? '★ ' : ''}}${{c.id}}</td>
+        <td>${{c.nombre}}</td>
+        <td style="font-family:var(--font-mono);">${{c.lat.toFixed(4)}}, ${{c.lon.toFixed(4)}}</td>
+        <td>${{c.origen_coords}}</td>
+        <td style="text-align:right;font-family:var(--font-mono);">${{c.capacidad_frio_kg.toLocaleString()}} kg</td>
+        <td style="text-align:right;font-family:var(--font-mono);">$${{c.costo_fijo_csv.toLocaleString()}}</td>
+        <td>${{c.es_candidato ? '<span style="color:#34d399;font-weight:700;">✓ Candidato</span>' : '<span style="color:#f87171;font-weight:700;">✗ Sin energía</span>'}}</td>
+      </tr>
+    `).join("");
+
+    originWrap.innerHTML = `
+      <div class="agy-flp-pipe">
+        <div class="agy-flp-pipe-box agy-tip-target" data-flp-tip="pipe_csv">
+          <div class="agy-flp-pipe-kicker">1. Entrada CSV (nodos_centros.csv)</div>
+          <div class="agy-flp-pipe-title">${{det.num_centros_csv || 13}} Nodos Logísticos</div>
+          <div style="font-size:12.5px;color:#a1a1aa;">3 Frío (F01–F03) · 3 Acopio (A01–A03) · 3 Muelles (M01–M03) · 2 Deterioro (D01–D02) · 2 Hábitats (H01–H02)</div>
+        </div>
+        <div class="agy-flp-pipe-arrow">→</div>
+        <div class="agy-flp-pipe-box accent agy-tip-target" data-flp-tip="pipe_filtro">
+          <div class="agy-flp-pipe-kicker">2. Filtro Booleano (nodo.py)</div>
+          <div class="agy-flp-pipe-title">Nodo.es_candidato_frio</div>
+          <div style="font-family:var(--font-mono);font-size:11.5px;color:#c4b5fd;">tipo ∈ {{'F','A'}} ∧ tiene_energia ∧ ¬restriccion_ambiental</div>
+        </div>
+        <div class="agy-flp-pipe-arrow">→</div>
+        <div class="agy-flp-pipe-box agy-tip-target" data-flp-tip="pipe_salida">
+          <div class="agy-flp-pipe-kicker">3. Salida del Filtro (Conjunto F)</div>
+          <div class="agy-flp-pipe-title">5 Candidatos Válidos Evaluados</div>
+          <div class="agy-flp-var-chips" style="margin-top:6px;">
+            <span class="agy-flp-vchip" data-flp-prov="F01" onclick="agySeleccionarCandidatoFLP('F01')">F01</span>
+            <span class="agy-flp-vchip opt" data-flp-prov="F02" onclick="agySeleccionarCandidatoFLP('F02')">★ F02</span>
+            <span class="agy-flp-vchip" data-flp-prov="A01" onclick="agySeleccionarCandidatoFLP('A01')">A01</span>
+            <span class="agy-flp-vchip" data-flp-prov="A02" onclick="agySeleccionarCandidatoFLP('A02')">A02</span>
+            <span class="agy-flp-vchip" data-flp-prov="F03" onclick="agySeleccionarCandidatoFLP('F03')">F03</span>
+            <span class="agy-flp-vchip rejected" data-flp-prov="A03">✗ A03 (sin energía)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="agy-flp-var-grid">
+        <div class="agy-flp-var-col">
+          <div class="agy-flp-var-col-head"><span>3.1 VARIABLES DE NODOS (nodo.py)</span><span style="color:#a1a1aa;">Hover para ficha</span></div>
+          <div class="agy-flp-var-chips">
+            <span class="agy-flp-vchip" data-flp-tip="node_id">id</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_nombre">nombre</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_tipo">tipo</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_coords">latitud, longitud</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_produccion">produccion_kg_dia</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_capacidad">capacidad_frio_kg</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_costo_fijo">costo_fijo</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_energia">tiene_energia</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_agua">tiene_agua</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_muelle">tiene_muelle</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_restriccion">restriccion_ambiental</span>
+            <span class="agy-flp-vchip calc" data-flp-tip="node_es_candidato">es_candidato_frio ★</span>
+            <span class="agy-flp-vchip" data-flp-tip="node_metadata">metadata</span>
+          </div>
+        </div>
+
+        <div class="agy-flp-var-col">
+          <div class="agy-flp-var-col-head"><span>3.2 VARIABLES DE ARISTAS (arista.py)</span><span style="color:#a1a1aa;">Hover para ficha</span></div>
+          <div class="agy-flp-var-chips">
+            <span class="agy-flp-vchip" data-flp-tip="edge_extremos">origen, destino</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_distancia">distancia_km</span>
+            <span class="agy-flp-vchip opt" data-flp-tip="edge_tiempo">tiempo_h ★</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_costo_base">costo_cop</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_peajes">peajes, costo_peajes_cop</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_tipo_via">tipo_via</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_estado_via">estado_via</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_flujo">flujo_vehicular</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_espera">tiempo_espera_h</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_riesgos">riesgo_term/acc/derr</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_confiabilidad">confiabilidad_via</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_retraso">prob_retraso</span>
+            <span class="agy-flp-vchip calc" data-flp-tip="edge_tiempo_ef">tiempo_efectivo_h</span>
+            <span class="agy-flp-vchip calc" data-flp-tip="edge_costo_total">costo_total_cop</span>
+            <span class="agy-flp-vchip calc" data-flp-tip="edge_perdida">perdida_esperada</span>
+            <span class="agy-flp-vchip calc" data-flp-tip="edge_peso">peso_combinado</span>
+            <span class="agy-flp-vchip" data-flp-tip="edge_capacidad">capacidad_kg</span>
+          </div>
+        </div>
+
+        <div class="agy-flp-var-col">
+          <div class="agy-flp-var-col-head"><span>3.3 CONSTANTES (constants.py)</span><span style="color:#a1a1aa;">Hover para ficha</span></div>
+          <div class="agy-flp-var-chips">
+            <span class="agy-flp-vchip const" data-flp-tip="const_tmax">TIEMPO_MAX_SIN_FRIO_H = 4.0 h</span>
+            <span class="agy-flp-vchip const" data-flp-tip="const_temp">T_amb = 30 °C · T_obj = 0 °C</span>
+            <span class="agy-flp-vchip const" data-flp-tip="const_deterioro">FACTOR_DETERIORO_ZONA_D = ×1.5</span>
+            <span class="agy-flp-vchip const" data-flp-tip="const_muelle">TIEMPO_TRANSBORDO_MUELLE = 0.25 h</span>
+            <span class="agy-flp-vchip const" data-flp-tip="const_perdida_kg">COSTO_PERDIDA_KG = $12,000/kg</span>
+            <span class="agy-flp-vchip const" data-flp-tip="const_fijo_esc">COSTO_FIJO_CENTRO_FRIO = $5M/mes</span>
+            <span class="agy-flp-vchip const" data-flp-tip="const_pesos">Pesos α..ζ (0.25..0.05)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="agy-plinth-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <div>
+            <h3 style="margin:0;">Origen Verificado de Coordenadas de los Candidatos (Git &amp; CSV)</h3>
+            <p style="font-size:13px;margin:4px 0 0 0;">Pasa el cursor sobre cualquier fila para ver la trazabilidad exacta del commit, regla geográfica y estado en el FLP.</p>
+          </div>
+          <span class="agy-badge" style="color:#c4b5fd;border-color:rgba(128,82,255,0.4);">commit 9af49ef + aaab5c5</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="agy-flp-esc-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nombre del Nodo</th>
+                <th>Coordenadas WGS84</th>
+                <th>Origen de las Coordenadas</th>
+                <th style="text-align:right;">Capacidad</th>
+                <th style="text-align:right;">Fijo CSV</th>
+                <th>Estado FLP</th>
+              </tr>
+            </thead>
+            <tbody>${{filasProv}}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px;font-size:12.5px;color:#a1a1aa;">
+          <strong>Nota de campo:</strong> Los 7 nodos de infraestructura complementaria (<code>M01, M02, M03, D01, D02, H01, H02</code>) se incorporaron posteriormente en el <code>commit aaab5c5</code> desde el levantamiento real <code>data/geojson/puntos_campo.geojson</code>.
+        </div>
+      </div>
+    `;
+  }}
+
+  agyRenderizarMatriz7x5FLP();
+  agyRenderizarSimulacionP05yFormulasFLP();
+  agyRenderizarEscenariosYAuditoriaFLP(agyModoDestinoFLP);
+}}
+
+function agyRenderizarMatriz7x5FLP() {{
+  const matWrap = document.getElementById("agy-flp-matrix-wrap");
+  const det = AGY_DATA.flp_detallado || {{}};
+  if (!matWrap || !det.matriz_7x5) return;
+
+  const cols = ["F01", "F02", "A01", "A02", "F03"];
+  const candsMap = {{}};
+  (det.candidatos || []).forEach(c => {{ candsMap[c.id] = c; }});
+
+  const ths = cols.map(cid => {{
+    const isOpt = cid === "F02";
+    const isFoc = cid === agyCandidatoFocusFLP;
+    const cls = (isOpt ? "col-opt " : "") + (isFoc ? "col-focus" : "");
+    return `<th class="${{cls}}" onclick="agyCandidatoFocusFLP='${{cid}}';agyRenderizarMatriz7x5FLP();" title="Clic para resaltar ${{cid}}">${{isOpt ? "★ F02 (Óptimo)" : cid}}</th>`;
+  }}).join("");
+
+  const filas = det.matriz_7x5.map(row => {{
+    const tds = cols.map(cid => {{
+      const cell = row.celdas[cid];
+      const isOpt = cid === "F02";
+      if (!cell || !cell.encontrado) {{
+        return `<td class="cell-hoverable cell-inf ${{isOpt ? 'col-opt' : ''}}" data-flp-cell="${{row.origen_id}}|${{cid}}">∞</td>`;
+      }}
+      let cls = "cell-hoverable ";
+      let extra = "";
+      if (isOpt) cls += "col-opt ";
+      if (!cell.cumple_fao) {{
+        cls += "cell-fail ";
+        extra = " (>4h)";
+      }} else if (row.origen_id === "P05" && cid === "F02") {{
+        cls += "cell-warn ";
+      }} else if (row.origen_id === "P04" && (cid === "A01" || cid === "F02")) {{
+        extra = " 🌿";
+      }}
+      return `<td class="${{cls}}" data-flp-cell="${{row.origen_id}}|${{cid}}">${{cell.tiempo_h.toFixed(2)}} h${{extra}}</td>`;
+    }}).join("");
+
+    return `
+      <tr>
+        <td><strong>${{row.origen_id}}</strong> · ${{agyNombreCompacto(row.nombre)}} <span style="font-family:var(--font-mono);font-size:11px;color:#9ca3af;">(${{row.produccion_kg_dia.toFixed(1)}} kg/d)</span></td>
+        ${{tds}}
+      </tr>
+    `;
+  }}).join("");
+
+  const footTds = cols.map(cid => {{
+    const c = candsMap[cid] || {{ cobertura_n: 0, cobertura_pct: 0 }};
+    const isOpt = cid === "F02";
+    return `<td class="${{isOpt ? 'col-opt' : ''}}">${{c.cobertura_n}}/7 (${{c.cobertura_pct.toFixed(1)}}%)${{isOpt ? ' ★' : ''}}</td>`;
+  }}).join("");
+
+  // Tabla tramo a tramo hacia F02
+  const filasF02 = det.matriz_7x5.map(row => {{
+    const c = row.celdas["F02"];
+    if (!c || !c.encontrado) return "";
+    const sumStr = (c.tramos || []).map(t => `${{t.tiempo_h.toFixed(2)}}`).join(" + ");
+    return `
+      <tr class="esc-hoverable" data-flp-cell="${{row.origen_id}}|F02">
+        <td style="font-family:var(--font-mono);font-weight:700;">${{row.origen_id}}</td>
+        <td style="font-family:var(--font-mono);font-size:12px;">${{c.camino.join(" → ")}}</td>
+        <td style="font-family:var(--font-mono);font-size:12px;color:#a1a1aa;">${{sumStr}}</td>
+        <td style="text-align:right;font-family:var(--font-mono);font-weight:700;color:${{c.tiempo_h > 2.0 ? '#fbbf24' : '#34d399'}};">${{c.tiempo_h.toFixed(2)}} h</td>
+        <td style="text-align:right;font-family:var(--font-mono);">${{c.dist_km.toFixed(1)}} km</td>
+      </tr>
+    `;
+  }}).join("");
+
+  matWrap.innerHTML = `
+    <div class="agy-plinth-card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+        <div>
+          <h3 style="margin:0;">Matriz de Tiempos Dijkstra 7×5 (criterio = <code>tiempo_h</code>, <code>evitar_restringidos = True</code>)</h3>
+          <p style="font-size:13px;margin:4px 0 0 0;">Pasa el cursor sobre <strong style="color:#c4b5fd;">cualquier celda</strong> para ver la ruta exacta, la suma arista por arista, distancia y costo. El ícono 🌿 marca el desvío ecológico por <code>H01</code>.</p>
+        </div>
+        <span class="agy-delta-pill">★ Ganador Iteración 1: F02 (7/7 = 100%)</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="agy-flp-mat-table">
+          <thead>
+            <tr>
+              <th>Asociación Pesquera (Origen)</th>
+              ${{ths}}
+            </tr>
+          </thead>
+          <tbody>
+            ${{filas}}
+            <tr class="mat-foot">
+              <td>Cobertura Sanitaria FAO (≤ 4.00 h)</td>
+              ${{footTds}}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="agy-bento-grid-2">
+      <div class="agy-plinth-card">
+        <h3>Algoritmo Greedy Constructivo vs. MILP PuLP (<code>facility_location.py</code>)</h3>
+        <div class="agy-flp-formula-card" style="margin-top:10px;">
+          <div class="agy-flp-formula-head">
+            <span class="agy-flp-formula-title">Iteración 1 — Selección Voraz (Greedy)</span>
+            <span class="agy-flp-formula-src">resolver_localizacion_greedy()</span>
+          </div>
+          <p style="font-size:13px;margin:0 0 8px 0;">Evalúa la ganancia de cobertura de cada candidato en ≤ 4.0 h: <code>F02=7</code>, <code>F03=6</code>, <code>F01=4</code>, <code>A02=4</code>, <code>A01=3</code>. Selecciona <strong>F02</strong> y alcanza <code>cubiertos = 7/7 (100%)</code> en una sola iteración → <strong>fin del algoritmo</strong>.</p>
+          <div style="font-family:var(--font-mono);font-size:12px;color:#34d399;">centros_abiertos = ['F02'] · t_max = 2.65 h · costo_fijo_csv = $3,000,000 COP/mes</div>
+        </div>
+        <div class="agy-flp-formula-card" style="margin-bottom:0;">
+          <div class="agy-flp-formula-head">
+            <span class="agy-flp-formula-title">Verificación Exacta MILP (PuLP)</span>
+            <span class="agy-flp-formula-src">resolver_localizacion_pulp()</span>
+          </div>
+          <div class="agy-vm-math-stack" style="margin:6px 0;">
+            <div class="agy-vm-math-row">
+              <span>min <var>Z</var> =</span>
+              <span class="agy-sum">∑</span><sub><i>j</i>∈<i>F</i></sub>
+              <span><var>f</var><sub><i>j</i></sub> <var>y</var><sub><i>j</i></sub> +</span>
+              <span class="agy-sum">∑</span><sub><i>i</i>∈<i>P</i></sub>
+              <span class="agy-sum">∑</span><sub><i>j</i>∈<i>F</i></sub>
+              <span><var>c</var><sub><i>ij</i></sub> <var>x</var><sub><i>ij</i></sub></span>
+            </div>
+          </div>
+          <p style="font-size:12.5px;color:#a1a1aa;margin:4px 0 0 0;">Sujeto a: cada origen <i>i</i> asignado a exactamente 1 centro abierto, oferta asignada ≤ <code>capacidad_frio_kg</code> (265.75 ≤ 5,000 kg) y <code>t_ij ≤ 4.0 h</code>.</p>
+        </div>
+      </div>
+
+      <div class="agy-plinth-card">
+        <h3>Desglose Tramo a Tramo de las 7 Rutas hacia ★ F02</h3>
+        <p style="font-size:12.8px;margin-bottom:8px;">Pasa el cursor sobre una fila para inspeccionar el desglose completo de Dijkstra.</p>
+        <div style="overflow-x:auto;">
+          <table class="agy-flp-esc-table">
+            <thead>
+              <tr>
+                <th>Orig.</th>
+                <th>Ruta Óptima</th>
+                <th>Suma tiempo_h</th>
+                <th style="text-align:right;">Total</th>
+                <th style="text-align:right;">Dist.</th>
+              </tr>
+            </thead>
+            <tbody>${{filasF02}}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}}
+
+function agyRenderizarSimulacionP05yFormulasFLP() {{
+  const thWrap = document.getElementById("agy-flp-thermal-wrap");
+  const det = AGY_DATA.flp_detallado || {{}};
+  const sim = det.simulacion_p05;
+  const f23 = det.arista_f02_f03;
+  if (!thWrap || !sim) return;
+
+  const chainHtml = (sim.pasos || []).map(p => {{
+    let cls = "agy-flp-node-step";
+    if (p.refrigerado) cls += " step-cold";
+    else if (p.tipo === "D") cls += " step-danger";
+    else if (p.tipo === "M") cls += " step-warn";
+    return `
+      <div class="${{cls}}" data-flp-step="${{p.paso}}">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:10.5px;color:#a1a1aa;">
+          <span>PASO ${{p.paso}}</span>
+          <span>${{p.temp_c}}°C</span>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:#fff;margin:3px 0 2px 0;">${{p.nodo_id}} <span style="font-size:11px;color:#a1a1aa;font-weight:500;">(${{p.tipo}})</span></div>
+        <div style="font-family:var(--font-mono);font-size:12px;color:#e4e4e7;">${{p.kg_actual.toFixed(3)}} kg</div>
+        <div style="font-family:var(--font-mono);font-size:10.8px;color:${{p.refrigerado ? '#34d399' : (p.tipo === 'D' ? '#f87171' : '#fbbf24')}};margin-top:3px;">
+          ${{p.paso === 0 ? 'Inicio 30 °C' : (p.refrigerado ? `Δ${{p.delta_det_pct.toFixed(2)}}% · Reset 0°C` : `Δ${{p.delta_det_pct.toFixed(2)}}% · ${{p.efecto}}`)}}
+        </div>
+      </div>
+    `;
+  }}).join("");
+
+  const f23Block = f23 && f23.peso_combinado !== undefined ? `
+    <div class="agy-flp-formula-card agy-tip-target" data-flp-tip="edge_peso">
+      <div class="agy-flp-formula-head">
+        <span class="agy-flp-formula-title">4. Peso Multicriterio — Sustitución Real Arista F02 → F03</span>
+        <span class="agy-flp-formula-src">arista.py (ADR-02)</span>
+      </div>
+      <div class="agy-vm-math-stack">
+        <div class="agy-vm-math-row">
+          <span><var>t</var><sub>ef</sub> = ${{f23.tiempo_h}} × ${{f23.factor_estado_via}} × ${{f23.factor_flujo}} + ${{f23.tiempo_espera_h}} = <strong>${{f23.tiempo_efectivo_h}} h</strong></span>
+          <span class="agy-op">·</span>
+          <span><var>C</var><sub>tot</sub> = <strong>$${{f23.costo_total_cop.toLocaleString()}} COP</strong></span>
+        </div>
+        <div class="agy-vm-math-row">
+          <span><var>w</var><sub>F02→F03</sub> =</span>
+          <span>0.25(<span class="agy-frac"><span class="agy-frac-num">${{f23.tiempo_efectivo_h}}</span><span class="agy-frac-den">48</span></span>) + 0.20(<span class="agy-frac"><span class="agy-frac-num">453k</span><span class="agy-frac-den">5M</span></span>) + 0.20(${{f23.riesgo_combinado}}) + 0.10(${{f23.p_norm.toFixed(4)}}) + 0.10(1−${{f23.confiabilidad_via}}) + 0.05(${{f23.prob_retraso}}) = <strong style="color:#fde68a;">${{f23.peso_combinado.toFixed(4)}}</strong></span>
+        </div>
+      </div>
+    </div>
+  ` : "";
+
+  thWrap.innerHTML = `
+    <div class="agy-bento-grid-2">
+      <div>
+        <div class="agy-flp-formula-card agy-tip-target" data-flp-tip="pipe_filtro">
+          <div class="agy-flp-formula-head">
+            <span class="agy-flp-formula-title">1. Optimización FLP (Cobertura + Costo Mínimo)</span>
+            <span class="agy-flp-formula-src">facility_location.py</span>
+          </div>
+          <div class="agy-vm-math-stack">
+            <div class="agy-vm-math-row">
+              <span>min <var>Z</var> =</span>
+              <span class="agy-sum">∑</span><sub><i>j</i>∈<i>F</i></sub>
+              <span><var>f</var><sub><i>j</i></sub> <var>y</var><sub><i>j</i></sub> +</span>
+              <span class="agy-sum">∑</span><sub><i>i</i>∈<i>P</i></sub>
+              <span class="agy-sum">∑</span><sub><i>j</i>∈<i>F</i></sub>
+              <span><var>c</var><sub><i>ij</i></sub> <var>x</var><sub><i>ij</i></sub></span>
+            </div>
+            <div class="agy-vm-math-row" style="font-size:13px;color:#a1a1aa;">
+              <span>s.a. <var>d</var><sub>tiempo</sub>(<i>i</i>, <i>j</i>) ≤ 4.0 h &nbsp;∧&nbsp; ∑ <var>q</var><sub><i>i</i></sub> <var>x</var><sub><i>ij</i></sub> ≤ <var>K</var><sub><i>j</i></sub> <var>y</var><sub><i>j</i></sub></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="agy-flp-formula-card agy-tip-target" data-flp-tip="const_deterioro">
+          <div class="agy-flp-formula-head">
+            <span class="agy-flp-formula-title">2. Deterioro Térmico FAO (30 °C, Zona D y Muelle M)</span>
+            <span class="agy-flp-formula-src">cold_chain.py + geo_utils.py</span>
+          </div>
+          <div class="agy-vm-math-stack">
+            <div class="agy-vm-math-row">
+              <span>Δ<var>d</var> = <var>t</var><sub>tramo</sub> × 2.5%/h × <var>φ</var><sub><i>D</i></sub></span>
+              <span class="agy-op">·</span>
+              <span><var>φ</var><sub><i>D</i></sub> = 1.5 (en Zona D)</span>
+            </div>
+            <div class="agy-vm-math-row">
+              <span><var>t</var><sub>tramo,M</sub> = <var>t</var><sub>arista</sub> + 0.25 h</span>
+              <span class="agy-op">·</span>
+              <span><var>kg</var><sub>nuevo</sub> = <var>kg</var><sub>actual</sub> · (1 − <span class="agy-frac"><span class="agy-frac-num">Δ<var>d</var></span><span class="agy-frac-den">100</span></span>)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="agy-flp-formula-card agy-tip-target" data-flp-tip="const_fijo_esc">
+          <div class="agy-flp-formula-head">
+            <span class="agy-flp-formula-title">3. Costo Total Mensual del Escenario</span>
+            <span class="agy-flp-formula-src">scenario_evaluator.py</span>
+          </div>
+          <div class="agy-vm-math-stack">
+            <div class="agy-vm-math-row">
+              <span><var>C</var><sub>total</sub> = (<var>n</var><sub>centros</sub> × $5,000,000) + <var>C</var><sub>transporte</sub> + (<var>kg</var><sub>perd</sub> × $12,000)</span>
+            </div>
+          </div>
+        </div>
+
+        ${{f23Block}}
+      </div>
+
+      <div class="agy-plinth-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <div>
+            <h3 style="margin:0;">Simulación Térmica Paso a Paso — Ruta Crítica P05</h3>
+            <p style="font-size:12.8px;margin:4px 0 0 0;">Lote inicial: <strong>${{sim.kg_inicial.toFixed(1)}} kg</strong> (P05 Puerto Trujillo → V_PG1). <strong style="color:#c4b5fd;">Pasa el cursor por cada paso</strong> para ver su cálculo exacto.</p>
+          </div>
+          <span class="agy-delta-pill">✓ cumple_limite = ${{sim.cumple_limite ? 'True' : 'False'}}</span>
+        </div>
+
+        <div class="agy-flp-chain">${{chainHtml}}</div>
+
+        <div class="agy-bento-grid-3" style="margin-bottom:0;">
+          <div class="agy-plinth-card obsidian" style="padding:12px;">
+            <div style="font-size:11px;color:#9ca3af;font-family:var(--font-mono);">MASA FINAL ENTREGADA</div>
+            <div style="font-size:20px;font-weight:700;color:#34d399;font-family:var(--font-mono);margin-top:4px;">${{sim.kg_final.toFixed(3)}} kg</div>
+            <div style="font-size:11.5px;color:#a1a1aa;">de ${{sim.kg_inicial.toFixed(1)}} kg iniciales</div>
+          </div>
+          <div class="agy-plinth-card obsidian" style="padding:12px;">
+            <div style="font-size:11px;color:#9ca3af;font-family:var(--font-mono);">MERMA ACUMULADA</div>
+            <div style="font-size:20px;font-weight:700;color:#fbbf24;font-family:var(--font-mono);margin-top:4px;">${{sim.perdida_kg.toFixed(3)}} kg (${{sim.perdida_pct.toFixed(2)}}%)</div>
+            <div style="font-size:11.5px;color:#a1a1aa;">$${{Math.round(sim.costo_perdida_cop).toLocaleString()}} COP en merma</div>
+          </div>
+          <div class="agy-plinth-card obsidian" style="padding:12px;">
+            <div style="font-size:11px;color:#9ca3af;font-family:var(--font-mono);">TIEMPO TOTAL / FINAL SIN FRÍO</div>
+            <div style="font-size:20px;font-weight:700;color:#f5f5f7;font-family:var(--font-mono);margin-top:4px;">${{sim.tiempo_total_h.toFixed(2)}} h / ${{sim.tiempo_sin_frio_final_h.toFixed(2)}} h</div>
+            <div style="font-size:11.5px;color:#34d399;">Reset en A03, A01 y F02 (≤ 4.0 h)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}}
+
+function agyRenderizarEscenariosYAuditoriaFLP(modo) {{
+  const escWrap = document.getElementById("agy-flp-scenarios-wrap");
+  const audWrap = document.getElementById("agy-flp-audit-wrap");
+  const lista = modo === "PG" ? (AGY_DATA.escenarios_pg || []) : (AGY_DATA.escenarios_bog || []);
+
+  if (escWrap && lista.length) {{
+    const maxCosto = Math.max(...lista.map(e => e.costo_total_cop || 0), 1);
+    const filas = lista.map((e, idx) => {{
+      const isOpt = idx === 2;
+      const pctBar = Math.max(4, Math.round((e.costo_total_cop / maxCosto) * 100));
+      const barCol = isOpt ? "#10b981" : (idx === 4 ? "#ef4444" : "#8052ff");
+      return `
+        <tr class="esc-hoverable ${{isOpt ? 'esc-opt' : ''}}" data-flp-esc="${{modo}}|${{idx}}">
+          <td>${{isOpt ? '★ ' : ''}}${{e.nombre}}</td>
+          <td style="font-family:var(--font-mono);text-align:right;">${{e.cumplimiento_termico_pct.toFixed(1)}}%</td>
+          <td style="font-family:var(--font-mono);text-align:right;">${{e.pct_perdida.toFixed(2)}}% (${{e.kg_perdido.toFixed(1)}} kg)</td>
+          <td style="font-family:var(--font-mono);text-align:right;">$${{Math.round(e.costo_total_cop).toLocaleString()}}</td>
+          <td style="font-family:var(--font-mono);text-align:right;">$${{Math.round(e.costo_por_kg_cop).toLocaleString()}}/kg</td>
+          <td style="min-width:130px;">
+            <div style="height:8px;background:rgba(255,255,255,0.08);border-radius:999px;overflow:hidden;">
+              <div style="height:100%;width:${{pctBar}}%;background:${{barCol}};border-radius:999px;"></div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }}).join("");
+
+    escWrap.innerHTML = `
+      <div class="agy-plinth-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+          <div>
+            <h3 style="margin:0;">Evaluación Comparativa de los 5 Escenarios (${{modo === "PG" ? "Destino Local: V_PG1" : "Corredor Nacional: V_BOG1"}})</h3>
+            <p style="font-size:13px;margin:4px 0 0 0;">Pasa el cursor sobre cualquier escenario para ver el desglose de centros abiertos, costo fijo uniforme ($5M/planta) y fórmula exacta.</p>
+          </div>
+          <span class="agy-delta-pill">AHORRO SOLO F02 vs. 3 PLANTAS: −$10,000,000 COP/MES</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="agy-flp-esc-table">
+            <thead>
+              <tr>
+                <th>Escenario Evaluado</th>
+                <th style="text-align:right;">Cobertura</th>
+                <th style="text-align:right;">Merma</th>
+                <th style="text-align:right;">Costo Total / mes</th>
+                <th style="text-align:right;">Costo / kg</th>
+                <th>Peso Relativo</th>
+              </tr>
+            </thead>
+            <tbody>${{filas}}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }}
+
+  if (audWrap) {{
+    audWrap.innerHTML = `
+      <div class="agy-plinth-card" style="border-color:rgba(245,158,11,0.35);">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <h3 style="margin:0;color:#fbbf24;">Notas Críticas de Auditoría para Sustentación (Transparencia del Código)</h3>
+          <span class="agy-badge" style="color:#fbbf24;border-color:rgba(245,158,11,0.4);">SECCIÓN 5 · INFORME FLP</span>
+        </div>
+        <div class="agy-bento-grid-2" style="margin-bottom:0;">
+          <div style="font-size:12.8px;color:#d4d4d8;line-height:1.55;">
+            <p style="margin:0 0 8px 0;"><strong>1. Costo fijo $3M (CSV) vs. $5M (EvaluadorEscenarios):</strong> <code>facility_location.py</code> lee <code>nodo.costo_fijo</code> de <code>nodos_centros.csv</code> ($3.0M para F02), mientras <code>EvaluadorEscenarios</code> aplica la constante uniforme <code>COSTO_FIJO_CENTRO_FRIO = $5,000,000 COP/mes</code> por cada planta abierta (de ahí el ahorro exacto de $10M COP/mes entre 1 y 3 centros).</p>
+            <p style="margin:0;"><strong>2. Tiempo P05→F02 (2.65 h vs. 2.10 h):</strong> La matriz FLP suma las aristas puras (<code>0.20+1.20+0.40+0.25+0.60 = 2.65 h</code>). En cambio, <code>dijkstra_con_cota_inocuidad</code> reinicia el reloj en acopios con frío (A03/A01), reportando un tramo máximo continuo sin frío de <code>2.10 h</code>.</p>
+          </div>
+          <div style="font-size:12.8px;color:#d4d4d8;line-height:1.55;">
+            <p style="margin:0 0 8px 0;"><strong>3. Escenario «Sin cadena de frío» en EvaluadorEscenarios:</strong> Mantiene los nodos de acopio (A01–A03) y F02 como vértices de paso del grafo, por lo que <code>SimuladorCadenaFrio</code> conserva su abatimiento al pasar por ellos; el escenario cuantifica el costo base de transporte + merma ($523,133 local / $8,023,272 Bogotá) sin costo fijo de planta.</p>
+            <p style="margin:0;"><strong>4. «Solo F03» hacia V_PG1 = 0%:</strong> Porque el grafo es dirigido y existe <code>F02 → F03</code> (hacia el occidente) sin arista de retorno <code>F03 → V_PG1</code>; por eso F03 es nodo de relevo hacia Bogotá y no reemplaza a F02.</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }}
+}}
+
 function agyCambiarDestinoEditorial(modo) {{
+  agyModoDestinoFLP = modo;
   document.getElementById("agy-ed-dest-pg")?.classList.toggle("active", modo === "PG");
   document.getElementById("agy-ed-dest-bog")?.classList.toggle("active", modo === "BOG");
+  agyRenderizarEscenariosYAuditoriaFLP(modo);
   agyRenderizarGraficosSlide7(modo);
 }}
 
@@ -6660,35 +9012,35 @@ function agyInspeccionarNodo(n) {{
     </div>
 
     <div class="agy-prop-group">
-      <h4><span>1. Identidad y Coordenadas WGS84</span><span>Nodo</span></h4>
-      <div class="agy-prop-row"><span class="agy-prop-key">Identificador</span><span class="agy-prop-val">${{n.id}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Nombre</span><span class="agy-prop-val">${{n.nombre}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Rol logístico</span><span class="agy-prop-val">${{n.tipo}} · ${{n.tipo_descripcion}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Coordenadas GPS</span><span class="agy-prop-val">${{n.latitud.toFixed(4)}}°N, ${{n.longitud.toFixed(4)}}°W</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Modos conectados</span><span class="agy-prop-val">${{(n.modos_conectados || []).join(" + ") || "—"}}</span></div>
+      <h4 class="agy-prop-h4-btn" role="button" tabindex="0" onclick="agyAbrirModalVariables('nodo', 1)" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalVariables('nodo', 1);}}" title="Clic para ver explicación y fórmulas de estas variables"><span>1. Identidad y Coordenadas WGS84</span><span class="agy-prop-h4-pill">Nodo · ?</span></h4>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_id"><span class="agy-prop-key">Identificador</span><span class="agy-prop-val">${{n.id}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_nombre"><span class="agy-prop-key">Nombre</span><span class="agy-prop-val">${{n.nombre}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_tipo"><span class="agy-prop-key">Rol logístico</span><span class="agy-prop-val">${{n.tipo}} · ${{n.tipo_descripcion}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_coords"><span class="agy-prop-key">Coordenadas GPS</span><span class="agy-prop-val">${{n.latitud.toFixed(4)}}°N, ${{n.longitud.toFixed(4)}}°W</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_tipo_via"><span class="agy-prop-key">Modos conectados</span><span class="agy-prop-val">${{(n.modos_conectados || []).join(" + ") || "—"}}</span></div>
     </div>
 
     <div class="agy-prop-group">
-      <h4><span>2. Capacidades, Producción y Costos</span><span>Métricas</span></h4>
-      <div class="agy-prop-row"><span class="agy-prop-key">Producción diaria</span><span class="agy-prop-val">${{n.produccion_kg_dia.toFixed(2)}} kg/día</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Capacidad frigorífica</span><span class="agy-prop-val">${{n.capacidad_frio_kg.toLocaleString()}} kg</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Costo fijo mensual</span><span class="agy-prop-val">$${{n.costo_fijo.toLocaleString()}} COP</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Demanda comercial</span><span class="agy-prop-val">${{n.metadata.demanda_kg_dia || 0}} kg/día</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Cuenca hidrográfica</span><span class="agy-prop-val">${{n.metadata.rio || "—"}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Pescadores censados</span><span class="agy-prop-val">${{n.metadata.pescadores || "—"}}</span></div>
+      <h4 class="agy-prop-h4-btn" role="button" tabindex="0" onclick="agyAbrirModalVariables('nodo', 2)" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalVariables('nodo', 2);}}" title="Clic para ver explicación y fórmulas de estas variables"><span>2. Capacidades, Producción y Costos</span><span class="agy-prop-h4-pill">Métricas · ?</span></h4>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_produccion"><span class="agy-prop-key">Producción diaria</span><span class="agy-prop-val">${{n.produccion_kg_dia.toFixed(2)}} kg/día</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_capacidad"><span class="agy-prop-key">Capacidad frigorífica</span><span class="agy-prop-val">${{n.capacidad_frio_kg.toLocaleString()}} kg</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_costo_fijo"><span class="agy-prop-key">Costo fijo mensual</span><span class="agy-prop-val">$${{n.costo_fijo.toLocaleString()}} COP</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_metadata"><span class="agy-prop-key">Demanda comercial</span><span class="agy-prop-val">${{n.metadata.demanda_kg_dia || 0}} kg/día</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_metadata"><span class="agy-prop-key">Cuenca hidrográfica</span><span class="agy-prop-val">${{n.metadata.rio || "—"}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_metadata"><span class="agy-prop-key">Pescadores censados</span><span class="agy-prop-val">${{n.metadata.pescadores || "—"}}</span></div>
     </div>
 
     <div class="agy-prop-group">
-      <h4><span>3. Infraestructura y Restricciones</span><span>Estado</span></h4>
-      <div class="agy-prop-row"><span class="agy-prop-key">Energía eléctrica</span><span class="agy-prop-val">${{n.tiene_energia ? "Sí (Continua)" : "No disponible"}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Agua potable</span><span class="agy-prop-val">${{n.tiene_agua ? "Sí" : "No"}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Infraestructura muelle</span><span class="agy-prop-val">${{n.tiene_muelle ? "Sí" : "No"}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Restricción ambiental</span><span class="agy-prop-val">${{n.restriccion_ambiental ? "Hábitat protegido (H)" : "Sin restricción"}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Elegible FLP</span><span class="agy-prop-val">${{n.es_candidato_frio ? "Candidato válido" : "No elegible"}}</span></div>
+      <h4 class="agy-prop-h4-btn" role="button" tabindex="0" onclick="agyAbrirModalVariables('nodo', 3)" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalVariables('nodo', 3);}}" title="Clic para ver explicación y fórmulas de estas variables"><span>3. Infraestructura y Restricciones</span><span class="agy-prop-h4-pill">Estado · ?</span></h4>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_energia"><span class="agy-prop-key">Energía eléctrica</span><span class="agy-prop-val">${{n.tiene_energia ? "Sí (Continua)" : "No disponible"}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_agua"><span class="agy-prop-key">Agua potable</span><span class="agy-prop-val">${{n.tiene_agua ? "Sí" : "No"}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_muelle"><span class="agy-prop-key">Infraestructura muelle</span><span class="agy-prop-val">${{n.tiene_muelle ? "Sí" : "No"}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_restriccion"><span class="agy-prop-key">Restricción ambiental</span><span class="agy-prop-val">${{n.restriccion_ambiental ? "Hábitat protegido (H)" : "Sin restricción"}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="node_es_candidato"><span class="agy-prop-key">Elegible FLP</span><span class="agy-prop-val">${{n.es_candidato_frio ? "Candidato válido" : "No elegible"}}</span></div>
     </div>
 
     <div class="agy-prop-group">
-      <h4><span>4. Conectividad en Lista de Adyacencia</span><span>deg⁻ / deg⁺</span></h4>
+      <h4 class="agy-prop-h4-btn" role="button" tabindex="0" onclick="agyAbrirModalVariables('nodo', 4)" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalVariables('nodo', 4);}}" title="Clic para ver explicación y fórmulas de conectividad"><span>4. Conectividad en Lista de Adyacencia</span><span class="agy-prop-h4-pill">deg⁻ / deg⁺ · ?</span></h4>
       <div class="agy-prop-row"><span class="agy-prop-key">Grado de Entrada (deg⁻)</span><span class="agy-prop-val">${{n.grado_entrada}} aristas entrantes</span></div>
       <div class="agy-prop-row"><span class="agy-prop-key">Grado de Salida (deg⁺)</span><span class="agy-prop-val">${{n.grado_salida}} aristas salientes</span></div>
       <div style="margin-top:8px;color:var(--color-warm-cream);font-size:12px;">Aristas salientes desde ${{n.id}}:</div>
@@ -6731,7 +9083,7 @@ function agyInspeccionarArista(a) {{
     </div>
 
     <div class="agy-prop-group">
-      <h4><span>Peso Multicriterio</span><span><span class="agy-tex"><var>w</var><sub><i>ij</i></sub> <span class="agy-op">=</span> ${{a.peso_combinado.toFixed(4)}}</span></span></h4>
+      <h4 class="agy-prop-h4-btn" role="button" tabindex="0" onclick="agyAbrirModalVariables('arista', 0)" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalVariables('arista', 0);}}" title="Clic para ver la fórmula completa del peso multicriterio"><span>Peso Multicriterio</span><span class="agy-prop-h4-pill"><span class="agy-tex"><var>w</var><sub><i>ij</i></sub> <span class="agy-op">=</span> ${{a.peso_combinado.toFixed(4)}}</span> · ?</span></h4>
       <div class="agy-bar-wrap">
         <div class="agy-bar-label"><span><span class="agy-tex"><var>&alpha;</var> &middot; <var>t&#770;</var><sub><i>ij</i></sub></span> Tiempo efectivo (0.25)</span><span>+${{d.t_term.toFixed(4)}} (${{pct(d.t_term)}}%)</span></div>
         <div class="agy-bar-bg"><div class="agy-bar-fill" style="width:${{pct(d.t_term)}}%"></div></div>
@@ -6759,36 +9111,36 @@ function agyInspeccionarArista(a) {{
     </div>
 
     <div class="agy-prop-group">
-      <h4><span>1. Distancia, Tiempo y Velocidad</span><span>Cinemática</span></h4>
-      <div class="agy-prop-row"><span class="agy-prop-key">Distancia del tramo</span><span class="agy-prop-val">${{a.distancia_km.toFixed(2)}} km</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Tiempo base</span><span class="agy-prop-val">${{a.tiempo_h.toFixed(2)}} h</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Flujo vehicular</span><span class="agy-prop-val">${{a.flujo_vehicular}} (×${{a.factor_flujo}})</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Tiempo de espera</span><span class="agy-prop-val">${{a.tiempo_espera_h.toFixed(2)}} h</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Tiempo efectivo</span><span class="agy-prop-val">${{a.tiempo_efectivo_h.toFixed(3)}} h</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Velocidad efectiva</span><span class="agy-prop-val">${{a.velocidad_efectiva_kmh.toFixed(1)}} km/h</span></div>
+      <h4 class="agy-prop-h4-btn" role="button" tabindex="0" onclick="agyAbrirModalVariables('arista', 1)" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalVariables('arista', 1);}}" title="Clic para ver explicación y fórmulas de cinemática y tiempo"><span>1. Distancia, Tiempo y Velocidad</span><span class="agy-prop-h4-pill">Cinemática · ?</span></h4>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_distancia"><span class="agy-prop-key">Distancia del tramo</span><span class="agy-prop-val">${{a.distancia_km.toFixed(2)}} km</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_tiempo"><span class="agy-prop-key">Tiempo base</span><span class="agy-prop-val">${{a.tiempo_h.toFixed(2)}} h</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_flujo"><span class="agy-prop-key">Flujo vehicular</span><span class="agy-prop-val">${{a.flujo_vehicular}} (×${{a.factor_flujo}})</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_espera"><span class="agy-prop-key">Tiempo de espera</span><span class="agy-prop-val">${{a.tiempo_espera_h.toFixed(2)}} h</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_tiempo_ef"><span class="agy-prop-key">Tiempo efectivo</span><span class="agy-prop-val">${{a.tiempo_efectivo_h.toFixed(3)}} h</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_tiempo_ef"><span class="agy-prop-key">Velocidad efectiva</span><span class="agy-prop-val">${{a.velocidad_efectiva_kmh.toFixed(1)}} km/h</span></div>
     </div>
 
     <div class="agy-prop-group">
-      <h4><span>2. Costos Logísticos y Peajes</span><span>COP</span></h4>
-      <div class="agy-prop-row"><span class="agy-prop-key">Flete base</span><span class="agy-prop-val">$${{a.costo_cop.toLocaleString()}} COP</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Casetas de peaje</span><span class="agy-prop-val">${{a.peajes}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Costo de peajes</span><span class="agy-prop-val">$${{a.costo_peajes_cop.toLocaleString()}} COP</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Costo total</span><span class="agy-prop-val">$${{a.costo_total_cop.toLocaleString()}} COP</span></div>
+      <h4 class="agy-prop-h4-btn" role="button" tabindex="0" onclick="agyAbrirModalVariables('arista', 2)" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalVariables('arista', 2);}}" title="Clic para ver explicación y fórmulas de costos y peajes"><span>2. Costos Logísticos y Peajes</span><span class="agy-prop-h4-pill">COP · ?</span></h4>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_costo_base"><span class="agy-prop-key">Flete base</span><span class="agy-prop-val">$${{a.costo_cop.toLocaleString()}} COP</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_peajes"><span class="agy-prop-key">Casetas de peaje</span><span class="agy-prop-val">${{a.peajes}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_peajes"><span class="agy-prop-key">Costo de peajes</span><span class="agy-prop-val">$${{a.costo_peajes_cop.toLocaleString()}} COP</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_costo_total"><span class="agy-prop-key">Costo total</span><span class="agy-prop-val">$${{a.costo_total_cop.toLocaleString()}} COP</span></div>
     </div>
 
     <div class="agy-prop-group">
-      <h4><span>3. Estado Vial, Riesgo y Deterioro</span><span>22 Variables</span></h4>
-      <div class="agy-prop-row"><span class="agy-prop-key">Modalidad de vía</span><span class="agy-prop-val">${{a.tipo_via}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Estado superficial</span><span class="agy-prop-val">${{a.estado_via}} (×${{a.factor_estado_via}})</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Confiabilidad vial</span><span class="agy-prop-val">${{a.confiabilidad_via.toFixed(2)}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Probabilidad de retraso</span><span class="agy-prop-val">${{a.prob_retraso.toFixed(2)}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Riesgo térmico</span><span class="agy-prop-val">${{a.riesgo_termico.toFixed(2)}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Riesgo de accidente</span><span class="agy-prop-val">${{a.riesgo_accidente.toFixed(2)}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Riesgo de derrumbe</span><span class="agy-prop-val">${{a.riesgo_derrumbe.toFixed(2)}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Riesgo combinado</span><span class="agy-prop-val">${{a.riesgo_combinado.toFixed(4)}}</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Pérdida esperada (L_ij)</span><span class="agy-prop-val">${{a.perdida_esperada.toFixed(2)}}%</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Capacidad / Peso máx.</span><span class="agy-prop-val">${{a.capacidad_kg}} kg · ${{a.restriccion_peso_ton}} t</span></div>
-      <div class="agy-prop-row"><span class="agy-prop-key">Restricción horaria</span><span class="agy-prop-val">${{a.horario_restriccion}}</span></div>
+      <h4 class="agy-prop-h4-btn" role="button" tabindex="0" onclick="agyAbrirModalVariables('arista', 3)" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();agyAbrirModalVariables('arista', 3);}}" title="Clic para ver explicación y fórmulas de riesgo y pérdida"><span>3. Estado Vial, Riesgo y Deterioro</span><span class="agy-prop-h4-pill">20 Variables · ?</span></h4>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_tipo_via"><span class="agy-prop-key">Modalidad de vía</span><span class="agy-prop-val">${{a.tipo_via}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_estado_via"><span class="agy-prop-key">Estado superficial</span><span class="agy-prop-val">${{a.estado_via}} (×${{a.factor_estado_via}})</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_confiabilidad"><span class="agy-prop-key">Confiabilidad vial</span><span class="agy-prop-val">${{a.confiabilidad_via.toFixed(2)}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_retraso"><span class="agy-prop-key">Probabilidad de retraso</span><span class="agy-prop-val">${{a.prob_retraso.toFixed(2)}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_riesgos"><span class="agy-prop-key">Riesgo térmico</span><span class="agy-prop-val">${{a.riesgo_termico.toFixed(2)}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_riesgos"><span class="agy-prop-key">Riesgo de accidente</span><span class="agy-prop-val">${{a.riesgo_accidente.toFixed(2)}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_riesgos"><span class="agy-prop-key">Riesgo de derrumbe</span><span class="agy-prop-val">${{a.riesgo_derrumbe.toFixed(2)}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_riesgos"><span class="agy-prop-key">Riesgo combinado</span><span class="agy-prop-val">${{a.riesgo_combinado.toFixed(4)}}</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_perdida"><span class="agy-prop-key">Pérdida esperada (L_ij)</span><span class="agy-prop-val">${{a.perdida_esperada.toFixed(2)}}%</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_capacidad"><span class="agy-prop-key">Capacidad / Peso máx.</span><span class="agy-prop-val">${{a.capacidad_kg}} kg · ${{a.restriccion_peso_ton}} t</span></div>
+      <div class="agy-prop-row agy-tip-target" data-flp-tip="edge_capacidad"><span class="agy-prop-key">Restricción horaria</span><span class="agy-prop-val">${{a.horario_restriccion}}</span></div>
     </div>
   `;
 }}
@@ -6963,6 +9315,16 @@ function agyInspeccionarItinerario(it) {{
   window.addEventListener("resize", () => {{
     if (agyEsSlideInteractivo(agySlideActual)) {{
       agyRenderizarEscenaCompleta(true);
+    }}
+  }});
+
+  window.addEventListener("message", (ev) => {{
+    if (!ev.data || typeof ev.data !== "object") return;
+    if (ev.data.type === "agyAbrirCalculoFLP") {{
+      agyCambiarSlide(6, false);
+      if (typeof agySeleccionarCandidatoFLP === "function") {{
+        agySeleccionarCandidatoFLP(ev.data.candidato || "F02");
+      }}
     }}
   }});
 

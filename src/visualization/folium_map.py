@@ -24,8 +24,9 @@ import folium
 from folium import plugins
 
 from ..models.grafo_logistico import GrafoLogistico
+from ..algorithms.dijkstra import dijkstra
 from ..utils.data_loader import OUTPUT_DIR, SHP_DIR
-from ..utils.constants import TipoNodo
+from ..utils.constants import TipoNodo, TIEMPO_MAX_SIN_FRIO_H, COSTO_FIJO_CENTRO_FRIO
 
 # Ruta al GeoJSON de puntos de campo
 _GEOJSON_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "geojson"
@@ -270,6 +271,9 @@ def generar_mapa_interactivo(
 
     # ── Capa de nodos (marcadores) ───────────────────────────
     acopio_info = _resumen_acopios(itinerarios)
+    capa_frio_js_name = None
+    frio_markers_meta = []
+
     for tipo_code in [TipoNodo.PESCA, TipoNodo.ACOPIO, TipoNodo.FRIO,
                       TipoNodo.VENTA]:
         nodos_tipo = grafo.nodos_por_tipo(tipo_code)
@@ -280,13 +284,24 @@ def generar_mapa_interactivo(
         icono_nombre, icono_color = ICONOS_FOLIUM.get(
             tipo_code, ("circle", "gray")
         )
-        capa = folium.FeatureGroup(
-            name=f"{'🐟' if tipo_code == 'P' else '❄️' if tipo_code == 'F' else '📦' if tipo_code == 'A' else '🏪' if tipo_code == 'V' else '⚓'} {desc}"
-        )
+        if tipo_code == TipoNodo.FRIO:
+            ids_frio = ", ".join(n.id for n in nodos_tipo)
+            capa_nombre = f"❄️ Centros de Frío ({ids_frio})"
+        else:
+            capa_nombre = (
+                f"{'🐟' if tipo_code == 'P' else '📦' if tipo_code == 'A' else '🏪' if tipo_code == 'V' else '⚓'} {desc}"
+            )
+        capa = folium.FeatureGroup(name=capa_nombre, show=True)
 
         for nodo in nodos_tipo:
             # Construir popup HTML rico
             popup_lines = [f"<b>{nodo.nombre}</b><br>"]
+            if nodo.tipo == TipoNodo.FRIO and nodo.id == "F02":
+                popup_lines.append(
+                    "<span style='display:inline-block;background:#0288D1;color:#fff;"
+                    "font-size:10px;font-weight:bold;padding:1px 6px;border-radius:4px;"
+                    "margin:2px 0 4px 0;'>★ SELECCIÓN ÓPTIMA FLP (100% Cobertura)</span><br>"
+                )
             popup_lines.append(f"<i>{desc}</i> ({nodo.id})<br>")
 
             if nodo.tipo == TipoNodo.PESCA:
@@ -306,11 +321,15 @@ def generar_mapa_interactivo(
                     f"❄️ Capacidad: {nodo.capacidad_frio_kg:,.0f} kg<br>"
                 )
                 popup_lines.append(
-                    f"💰 Costo fijo: ${nodo.costo_fijo:,.0f}/mes<br>"
+                    f"💰 Costo fijo: ${nodo.costo_fijo:,.0f} COP/mes<br>"
                 )
                 popup_lines.append(
-                    f"⚡ Energía: {'Sí' if nodo.tiene_energia else 'No'}<br>"
+                    f"⚡ Energía: {'Sí' if nodo.tiene_energia else 'No'} · "
+                    f"💧 Agua: {'Sí' if nodo.tiene_agua else 'No'}<br>"
                 )
+                obs = nodo.metadata.get("observacion")
+                if obs:
+                    popup_lines.append(f"📝 {obs}<br>")
             elif nodo.tipo == TipoNodo.VENTA:
                 demanda = nodo.metadata.get("demanda_kg_dia", 0)
                 if demanda:
@@ -333,27 +352,135 @@ def generar_mapa_interactivo(
                 f"📍 {nodo.latitud:.4f}, {nodo.longitud:.4f}"
             )
 
-            # Determinar tamaño del marcador
-            if nodo.tipo == TipoNodo.PESCA:
-                radio = max(6, min(nodo.produccion_kg_dia / 5, 15))
-            elif nodo.tipo in (TipoNodo.FRIO, TipoNodo.ACOPIO):
-                radio = max(8, min(nodo.capacidad_frio_kg / 400, 18))
-            else:
-                radio = 10
+            if nodo.tipo == TipoNodo.FRIO:
+                es_optimo = nodo.id == "F02"
+                # Halo de área de cobertura frigorífica visible sobre el mapa satelital
+                folium.Circle(
+                    location=[nodo.latitud, nodo.longitud],
+                    radius=2600 if es_optimo else 1600,
+                    color="#0288D1" if es_optimo else "#00ACC1",
+                    weight=2.2 if es_optimo else 1.5,
+                    dash_array="" if es_optimo else "6 4",
+                    fill=True,
+                    fill_color="#29B6F6" if es_optimo else "#4DD0E1",
+                    fill_opacity=0.18 if es_optimo else 0.12,
+                    tooltip=f"❄️ Área de cobertura {nodo.nombre}",
+                ).add_to(capa)
 
-            # Marcador circular con color del tipo
-            folium.CircleMarker(
-                location=[nodo.latitud, nodo.longitud],
-                radius=radio,
-                color=COLORES_FELT.get(tipo_code, "#757575"),
-                fill=True,
-                fill_color=COLORES_FELT.get(tipo_code, "#757575"),
-                fill_opacity=0.8,
-                popup=folium.Popup("".join(popup_lines), max_width=280),
-                tooltip=f"{nodo.nombre} ({desc})",
-            ).add_to(capa)
+                # Marcador destacado con ícono de copo de nieve
+                mk_frio = folium.Marker(
+                    location=[nodo.latitud, nodo.longitud],
+                    icon=folium.Icon(
+                        color="darkblue" if es_optimo else "cadetblue",
+                        icon="snowflake",
+                        prefix="fa",
+                    ),
+                    popup=folium.Popup("".join(popup_lines), max_width=300),
+                    tooltip=(
+                        f"❄️ {nodo.id} ★ ÓPTIMO — {nodo.nombre} ({nodo.capacidad_frio_kg:,.0f} kg)"
+                        if es_optimo
+                        else f"❄️ {nodo.id} — {nodo.nombre} ({nodo.capacidad_frio_kg:,.0f} kg)"
+                    ),
+                    z_index_offset=900 if es_optimo else 700,
+                )
+                mk_frio.add_to(capa)
+                frio_markers_meta.append({
+                    "id": nodo.id,
+                    "nombre": nodo.nombre.replace("Centro Frío ", ""),
+                    "lat": nodo.latitud,
+                    "lon": nodo.longitud,
+                    "cap": int(nodo.capacidad_frio_kg),
+                    "costo": int(nodo.costo_fijo),
+                    "optimo": es_optimo,
+                    "marker_var": mk_frio.get_name(),
+                })
+            else:
+                # Determinar tamaño del marcador
+                if nodo.tipo == TipoNodo.PESCA:
+                    radio = max(6, min(nodo.produccion_kg_dia / 5, 15))
+                elif nodo.tipo == TipoNodo.ACOPIO:
+                    radio = max(8, min(nodo.capacidad_frio_kg / 400, 18))
+                else:
+                    radio = 10
+
+                # Marcador circular con color del tipo
+                folium.CircleMarker(
+                    location=[nodo.latitud, nodo.longitud],
+                    radius=radio,
+                    color=COLORES_FELT.get(tipo_code, "#757575"),
+                    fill=True,
+                    fill_color=COLORES_FELT.get(tipo_code, "#757575"),
+                    fill_opacity=0.8,
+                    popup=folium.Popup("".join(popup_lines), max_width=280),
+                    tooltip=f"{nodo.nombre} ({desc})",
+                ).add_to(capa)
 
         capa.add_to(mapa)
+        if tipo_code == TipoNodo.FRIO:
+            capa_frio_js_name = capa.get_name()
+
+    # ── Capa independiente: Nodos Candidatos a Centro de Frío (FLP) ──
+    candidatos_nodos = grafo.candidatos_frio()
+    capa_candidatos = folium.FeatureGroup(
+        name=f"🎯 Candidatos a Centro de Frío ({len(candidatos_nodos)})",
+        show=False,
+    )
+    candidatos_meta = []
+    for cand in candidatos_nodos:
+        es_opt = cand.id == "F02"
+        estado_txt = (
+            "★ SELECCIÓN ÓPTIMA FLP"
+            if es_opt
+            else ("Candidato Frío (F)" if cand.tipo == TipoNodo.FRIO else "Candidato Acopio con Energía (A)")
+        )
+        popup_cand = (
+            f"<b>🎯 Candidato FLP: {cand.nombre}</b><br>"
+            f"<span style='display:inline-block;background:{'#0288D1' if es_opt else '#7C3AED'};"
+            f"color:#fff;font-size:10px;font-weight:bold;padding:1px 6px;border-radius:4px;"
+            f"margin:2px 0 4px 0;'>{estado_txt}</span><br>"
+            f"🆔 Nodo: <b>{cand.id}</b> ({TipoNodo.descripcion(cand.tipo)})<br>"
+            f"❄️ Capacidad: {cand.capacidad_frio_kg:,.0f} kg<br>"
+            f"💰 Costo fijo: ${cand.costo_fijo:,.0f} COP/mes<br>"
+            f"⚡ Energía: Sí · 🌿 Sin restricción ambiental<br>"
+            f"📍 {cand.latitud:.4f}, {cand.longitud:.4f}"
+        )
+        # Halo violeta discontinuo para distinguir todos los candidatos sin alterar los 3 centros F
+        folium.Circle(
+            location=[cand.latitud, cand.longitud],
+            radius=2100,
+            color="#7C3AED",
+            weight=2.4,
+            dash_array="7 5",
+            fill=True,
+            fill_color="#8B5CF6",
+            fill_opacity=0.14,
+            popup=folium.Popup(popup_cand, max_width=290),
+            tooltip=f"🎯 Candidato {cand.id} — {cand.nombre} ({cand.capacidad_frio_kg:,.0f} kg)",
+        ).add_to(capa_candidatos)
+
+        # Etiqueta flotante limpia sobre cada nodo candidato
+        badge_bg = "#6D28D9" if not es_opt else "#0288D1"
+        badge_lbl = f"🎯 {cand.id} · {cand.nombre.replace('Centro Frío ', '').replace('Acopio ', '')}"
+        folium.Marker(
+            location=[cand.latitud, cand.longitud],
+            icon=folium.DivIcon(
+                icon_size=(165, 22),
+                icon_anchor=(82, 34),
+                html=(
+                    f'<div style="display:inline-block;white-space:nowrap;'
+                    f'background:{badge_bg};color:#fff;font-family:Arial,sans-serif;'
+                    f'font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;'
+                    f'border:1.5px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.35);">'
+                    f'{badge_lbl}</div>'
+                ),
+            ),
+            popup=folium.Popup(popup_cand, max_width=290),
+            z_index_offset=950,
+        ).add_to(capa_candidatos)
+        candidatos_meta.append({"id": cand.id, "lat": cand.latitud, "lon": cand.longitud})
+
+    capa_candidatos.add_to(mapa)
+    capa_candidatos_js_name = capa_candidatos.get_name()
 
     # ── Nodos M, D, H (capas propias con efecto) ─────────────
     _agregar_nodos_especiales(mapa, grafo, itinerarios)
@@ -367,16 +494,676 @@ def generar_mapa_interactivo(
     if itinerarios:
         _agregar_panel_itinerarios(mapa, grafo, itinerarios)
 
-    # ── Título ───────────────────────────────────────────────
-    titulo_html = """
-    <div id="folium-title-card" style="position:fixed; top:10px; left:60px; z-index:1000;
-         background:white; color:#1d1d1f; padding:10px 18px; border-radius:8px;
-         box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:Arial;">
+    # ── Título, selector de Centros de Frío, Ficha Rápida FLP y ajuste anti-superposición ──
+    map_js_var = mapa.get_name()
+    frio_js_var = capa_frio_js_name or "null"
+    cand_js_var = capa_candidatos_js_name or "null"
+    frio_json = json.dumps(frio_markers_meta, ensure_ascii=False)
+    cand_json = json.dumps(candidatos_meta, ensure_ascii=False)
+
+    # Datos dinámicos para la ficha rápida FLP (Paso 1 de propuesta_flujo_visual_flp.md)
+    puntos_pesca_flp = sorted(grafo.nodos_por_tipo(TipoNodo.PESCA), key=lambda x: x.id)
+    oferta_total_kg = sum(p.produccion_kg_dia for p in puntos_pesca_flp)
+    _provenance_map = {
+        "F01": (
+            "Manual +0.005° (~780 m) desde P01 ASOPESGA (commit 9af49ef)",
+            "Cubre 4/7 (57.1%). P03, P04 y P05 no alcanzan F01 en el grafo dirigido (∞).",
+        ),
+        "F02": (
+            "Cabecera urbana Puerto Gaitán (constants.py · 4.3128, -72.0826)",
+            "Único candidato con cobertura 7/7 (100%) en ≤ 2.65 h (Dijkstra FLP). Ahorra $10M COP/mes vs. 3 plantas.",
+        ),
+        "F03": (
+            "Cabecera Puerto López (constants.py · 126 km por Ruta Nacional 40)",
+            "Cubre 6/7 (85.7%). P05→F03 tarda 5.15 h (> 4.0 h FAO) y no tiene retorno dirigido a V_PG1.",
+        ),
+        "A01": (
+            "Mismas coordenadas que P03 San Miguel (commit 9af49ef)",
+            "Cubre 3/7 (42.9%) del sur (P03, P04, P05). P04→A01 desvía por H01 (0.25 h).",
+        ),
+        "A02": (
+            "Punto medio exacto entre P02 (4.33, -72.10) y P07 (4.34, -72.11)",
+            "Cubre 4/7 (57.1%) del norte (P01, P02, P06, P07) en ≤ 0.35 h.",
+        ),
+    }
+    quick_flp_map: Dict[str, dict] = {}
+    for cand in candidatos_nodos:
+        cubiertos = []
+        tiempos_ok = []
+        for p in puntos_pesca_flp:
+            dist_t, cam_t = dijkstra(grafo, p.id, cand.id, criterio="tiempo_h", evitar_restringidos=True)
+            if cam_t and dist_t <= TIEMPO_MAX_SIN_FRIO_H:
+                cubiertos.append(p.id)
+                tiempos_ok.append(dist_t)
+        n_total = len(puntos_pesca_flp) or 1
+        n_cub = len(cubiertos)
+        pct_cub = round(n_cub / n_total * 100.0, 1)
+        t_max = round(max(tiempos_ok), 2) if tiempos_ok else None
+        uso_pct = round((oferta_total_kg / cand.capacidad_frio_kg) * 100.0, 1) if cand.capacidad_frio_kg > 0 else 0.0
+        orig_txt, clave_txt = _provenance_map.get(
+            cand.id,
+            ("nodos_centros.csv", f"Candidato {cand.id} evaluado por Dijkstra (tiempo_h)."),
+        )
+        quick_flp_map[cand.id] = {
+            "id": cand.id,
+            "nombre": cand.nombre,
+            "tipo": cand.tipo,
+            "optimo": cand.id == "F02",
+            "cobertura_n": n_cub,
+            "cobertura_total": n_total,
+            "cobertura_pct": pct_cub,
+            "tiempo_max_h": t_max,
+            "capacidad_kg": int(cand.capacidad_frio_kg),
+            "uso_pct": uso_pct,
+            "oferta_kg": round(oferta_total_kg, 2),
+            "costo_fijo_csv": int(cand.costo_fijo),
+            "costo_eval_esc": int(COSTO_FIJO_CENTRO_FRIO) if cand.tipo == TipoNodo.FRIO else int(cand.costo_fijo),
+            "lat": cand.latitud,
+            "lon": cand.longitud,
+            "origen": orig_txt,
+            "filtro": "tipo ∈ {'F','A'} ∧ tiene_energia=True ∧ ¬restriccion_ambiental",
+            "clave": clave_txt,
+            "cubiertos_ids": cubiertos,
+        }
+    quick_flp_json = json.dumps(quick_flp_map, ensure_ascii=False)
+
+    botones_frio_html = ""
+    for fm in frio_markers_meta:
+        badge_opt = "★ " if fm["optimo"] else ""
+        cls_btn = "frio-btn frio-btn-opt" if fm["optimo"] else "frio-btn"
+        botones_frio_html += (
+            f'<button type="button" class="{cls_btn}" '
+            f'onclick="window.enfocarCentroFrio(\'{fm["id"]}\')" '
+            f'title="Capacidad: {fm["cap"]:,} kg · Costo fijo CSV: ${fm["costo"]:,} COP/mes · Clic para abrir ficha FLP">'
+            f'{badge_opt}{fm["id"]} · {fm["nombre"]} ({fm["cap"]:,} kg)</button>'
+        )
+
+    titulo_html = f"""
+    <style>
+      #folium-title-card {{
+        position: fixed;
+        top: 10px;
+        left: 56px;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.96);
+        color: #1d1d1f;
+        padding: 8px 14px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+        font-family: Arial, sans-serif;
+        line-height: 1.3;
+        font-size: 13px;
+        max-width: calc(100vw - 440px);
+      }}
+      #folium-frio-card {{
+        position: fixed;
+        top: 86px;
+        left: 10px;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.97);
+        color: #1d1d1f;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border-left: 3.5px solid #0288D1;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        width: 286px;
+      }}
+      #folium-frio-card .frio-top-row {{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        margin: 6px 0 5px 0;
+      }}
+      #folium-frio-card .frio-toggle-lbl {{
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #01579B;
+        cursor: pointer;
+      }}
+      #folium-frio-card .frio-btn-all {{
+        border: 1px solid #0288D1;
+        background: #E1F5FE;
+        color: #01579B;
+        border-radius: 5px;
+        padding: 2px 7px;
+        font-size: 10.5px;
+        font-weight: 700;
+        cursor: pointer;
+      }}
+      #folium-frio-card .frio-btn-all:hover {{
+        background: #B3E5FC;
+      }}
+      #folium-frio-card .frio-btn-list {{
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }}
+      #folium-frio-card .frio-btn {{
+        text-align: left;
+        border: 1px solid #CFD8DC;
+        background: #F8FAFC;
+        color: #1E293B;
+        border-radius: 5px;
+        padding: 4px 8px;
+        font-size: 10.8px;
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease;
+      }}
+      #folium-frio-card .frio-btn:hover {{
+        background: #E0F2FE;
+        border-color: #0288D1;
+      }}
+      #folium-frio-card .frio-btn-opt {{
+        background: #E1F5FE;
+        border-color: #0288D1;
+        color: #01579B;
+        font-weight: 700;
+      }}
+      #folium-frio-card .frio-cand-row {{
+        margin-top: 7px;
+        padding-top: 6px;
+        border-top: 1px solid #E2E8F0;
+      }}
+      #folium-frio-card .frio-cand-lbl {{
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #5B21B6;
+        cursor: pointer;
+        user-select: none;
+      }}
+      /* ── Paso 1: Ficha Rápida Contextual FLP (sin tapar el mapa) ── */
+      #folium-frio-quickcard {{
+        display: none;
+        position: fixed;
+        top: 86px;
+        left: 306px;
+        z-index: 1005;
+        width: 344px;
+        max-width: calc(100vw - 320px);
+        background: #141418;
+        color: #f5f5f7;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        padding: 12px 14px;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 11.5px;
+        line-height: 1.45;
+      }}
+      #folium-frio-quickcard.open {{
+        display: block;
+      }}
+      .fq-head {{
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }}
+      .fq-badge {{
+        display: inline-block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: rgba(16, 185, 129, 0.16);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.35);
+        margin-bottom: 3px;
+      }}
+      .fq-badge.cand {{
+        background: rgba(128, 82, 255, 0.16);
+        color: #c4b5fd;
+        border-color: rgba(128, 82, 255, 0.4);
+      }}
+      .fq-title {{
+        font-size: 13.5px;
+        font-weight: 700;
+        color: #f5f5f7;
+        margin: 0;
+      }}
+      .fq-close {{
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #a1a1aa;
+        border-radius: 6px;
+        width: 24px;
+        height: 24px;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+      }}
+      .fq-close:hover {{
+        background: rgba(255, 255, 255, 0.14);
+        color: #fff;
+      }}
+      .fq-pills {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 9px;
+      }}
+      .fq-pill {{
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: #1d1d22;
+        color: #a1a1aa;
+        border-radius: 6px;
+        padding: 3px 7px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 10.5px;
+        font-weight: 600;
+        cursor: pointer;
+      }}
+      .fq-pill:hover {{
+        color: #fff;
+        border-color: rgba(128, 82, 255, 0.6);
+      }}
+      .fq-pill.active {{
+        background: rgba(128, 82, 255, 0.24);
+        color: #fff;
+        border-color: #8052ff;
+      }}
+      .fq-kpis {{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin-bottom: 9px;
+      }}
+      .fq-kpi {{
+        background: #1b1b20;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 6px 8px;
+      }}
+      .fq-kpi-lbl {{
+        font-size: 9.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #9ca3af;
+      }}
+      .fq-kpi-val {{
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+        font-size: 13px;
+        font-weight: 700;
+        color: #f5f5f7;
+        margin-top: 2px;
+      }}
+      .fq-kpi-sub {{
+        font-size: 9.8px;
+        color: #a1a1aa;
+        margin-top: 1px;
+      }}
+      .fq-bullets {{
+        background: #101014;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 8px;
+        padding: 7px 9px;
+        margin-bottom: 9px;
+        font-size: 10.8px;
+        color: #d4d4d8;
+      }}
+      .fq-bullets div + div {{
+        margin-top: 4px;
+      }}
+      .fq-bullets strong {{
+        color: #f5f5f7;
+      }}
+      .fq-cta {{
+        width: 100%;
+        border: 1px solid rgba(167, 139, 250, 0.45);
+        background: #7C3AED;
+        color: #ffffff;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 11.5px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }}
+      .fq-cta:hover {{
+        background: #6D28D9;
+      }}
+      #folium-itin-card {{
+        position: fixed;
+        top: 235px;
+        left: 10px;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.96);
+        color: #1d1d1f;
+        padding: 8px 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        max-height: calc(100vh - 280px);
+        overflow-y: auto;
+      }}
+      #folium-legend-card {{
+        position: fixed;
+        bottom: 24px;
+        right: 10px;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.96);
+        color: #1d1d1f;
+        padding: 8px 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        line-height: 17px;
+        max-height: 44vh;
+        overflow-y: auto;
+      }}
+      #folium-legend-card summary,
+      #folium-frio-card summary,
+      #folium-itin-card summary {{
+        cursor: pointer;
+        user-select: none;
+        outline: none;
+      }}
+      .leaflet-top.leaflet-right .leaflet-control-layers-expanded {{
+        max-height: calc(100vh - 340px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        box-sizing: border-box;
+        background: rgba(255, 255, 255, 0.96);
+      }}
+    </style>
+    <div id="folium-title-card">
       <b>🐟 Cadena de Frío — Pesca Artesanal</b><br>
-      <span style="font-size:12px; color:#555;">
+      <span style="font-size:11.5px; color:#555;">
         Puerto Gaitán, Meta, Colombia
       </span>
     </div>
+    <div id="folium-frio-card">
+      <details open>
+        <summary><b>❄️ Centros de Frío ({len(frio_markers_meta)})</b></summary>
+        <div class="frio-top-row">
+          <label class="frio-toggle-lbl">
+            <input type="checkbox" id="chk-centros-frio" checked onchange="window.toggleCentrosFrio(this.checked)">
+            Mostrar en mapa
+          </label>
+          <button type="button" class="frio-btn-all" onclick="window.verTodosCentrosFrio()">Ver todos</button>
+        </div>
+        <div class="frio-btn-list">
+          {botones_frio_html}
+        </div>
+        <div class="frio-cand-row">
+          <label class="frio-cand-lbl" title="Mostrar u ocultar todos los nodos candidatos a centro de frío (F01, F02, F03, A01, A02)">
+            <input type="checkbox" id="chk-candidatos-frio" onchange="window.toggleCandidatosFrio(this.checked)">
+            🎯 Nodos candidatos a frío ({len(candidatos_meta)})
+          </label>
+        </div>
+      </details>
+    </div>
+    <div id="folium-frio-quickcard" aria-live="polite"></div>
+    <script>
+      (function () {{
+        var FRIO_DATA = {frio_json};
+        var CAND_DATA = {cand_json};
+        var QUICK_FLP = {quick_flp_json};
+        var quickActivo = 'F02';
+
+        function getMapAndLayer() {{
+          var m = window['{map_js_var}'];
+          var fg = window['{frio_js_var}'];
+          var cg = window['{cand_js_var}'];
+          return {{ map: m, layer: fg, candLayer: cg }};
+        }}
+
+        window.cerrarFichaRapidaFLP = function () {{
+          var card = document.getElementById('folium-frio-quickcard');
+          if (card) card.classList.remove('open');
+        }};
+
+        window.abrirCalculoFLP = function (candId) {{
+          var cid = candId || quickActivo || 'F02';
+          try {{
+            if (window.parent && window.parent !== window) {{
+              window.parent.postMessage({{ type: 'agyAbrirCalculoFLP', candidato: cid }}, '*');
+              return;
+            }}
+          }} catch (e) {{}}
+          if (typeof window.agyCambiarSlide === 'function') {{
+            window.agyCambiarSlide(6, false);
+            if (typeof window.agySeleccionarCandidatoFLP === 'function') {{
+              window.agySeleccionarCandidatoFLP(cid);
+            }}
+          }}
+        }};
+
+        window.mostrarFichaRapidaFLP = function (candId) {{
+          var card = document.getElementById('folium-frio-quickcard');
+          var d = QUICK_FLP[candId] || QUICK_FLP['F02'];
+          if (!card || !d) return;
+          quickActivo = d.id;
+          var orden = ['F01', 'F02', 'F03', 'A01', 'A02'];
+          var pillsHtml = orden.filter(function (k) {{ return QUICK_FLP[k]; }}).map(function (k) {{
+            var lbl = k === 'F02' ? '★ F02' : k;
+            var cls = 'fq-pill' + (k === d.id ? ' active' : '');
+            return '<button type="button" class="' + cls + '" onclick="window.seleccionarCandidatoQuick(\\'' + k + '\\')">' + lbl + '</button>';
+          }}).join('');
+          var tMaxTxt = d.tiempo_max_h !== null ? (d.tiempo_max_h.toFixed(2) + ' h') : '∞';
+          var tColor = (d.tiempo_max_h !== null && d.tiempo_max_h <= 4.0) ? '#34d399' : '#f87171';
+          var cobColor = d.cobertura_pct >= 99.9 ? '#34d399' : '#fbbf24';
+          var costoLabel = d.tipo === 'F'
+            ? ('$' + (d.costo_eval_esc / 1e6).toFixed(0) + 'M / mes')
+            : ('$' + (d.costo_fijo_csv / 1e6).toFixed(2) + 'M / mes');
+          var costoSub = d.tipo === 'F'
+            ? ('CSV: $' + (d.costo_fijo_csv / 1e6).toFixed(1) + 'M · Eval.: $5M')
+            : ('Costo fijo en nodos_centros.csv');
+          card.innerHTML =
+            '<div class="fq-head">' +
+              '<div>' +
+                '<span class="fq-badge' + (d.optimo ? '' : ' cand') + '">' +
+                  (d.optimo ? '★ SELECCIÓN ÓPTIMA FLP' : 'CANDIDATO EVALUADO · TIPO ' + d.tipo) +
+                '</span>' +
+                '<h4 class="fq-title">' + d.id + ' · ' + d.nombre + '</h4>' +
+              '</div>' +
+              '<button type="button" class="fq-close" onclick="window.cerrarFichaRapidaFLP()" title="Cerrar ficha rápida">×</button>' +
+            '</div>' +
+            '<div class="fq-pills">' + pillsHtml + '</div>' +
+            '<div class="fq-kpis">' +
+              '<div class="fq-kpi" title="Asociaciones alcanzables en t ≤ 4.0 h mediante Dijkstra (criterio=tiempo_h, evitar_restringidos=True). Cubiertos: ' + d.cubiertos_ids.join(', ') + '">' +
+                '<div class="fq-kpi-lbl">Cobertura FAO (≤4h)</div>' +
+                '<div class="fq-kpi-val" style="color:' + cobColor + ';">' + d.cobertura_n + '/' + d.cobertura_total + ' (' + d.cobertura_pct.toFixed(1) + '%)</div>' +
+                '<div class="fq-kpi-sub">' + d.cubiertos_ids.join(', ') + '</div>' +
+              '</div>' +
+              '<div class="fq-kpi" title="Tiempo máximo de llegada por Dijkstra (tiempo_h) entre las asociaciones cubiertas (límite FAO = 4.0 h)">' +
+                '<div class="fq-kpi-lbl">Tiempo Máx. Acceso</div>' +
+                '<div class="fq-kpi-val" style="color:' + tColor + ';">' + tMaxTxt + '</div>' +
+                '<div class="fq-kpi-sub">Límite FAO: 4.00 h</div>' +
+              '</div>' +
+              '<div class="fq-kpi" title="capacidad_frio_kg en nodos_centros.csv frente a oferta total censada de 265.75 kg/día">' +
+                '<div class="fq-kpi-lbl">Capacidad / Uso</div>' +
+                '<div class="fq-kpi-val">' + d.capacidad_kg.toLocaleString() + ' kg</div>' +
+                '<div class="fq-kpi-sub">Uso: ' + d.uso_pct.toFixed(1) + '% (' + d.oferta_kg + ' kg/d)</div>' +
+              '</div>' +
+              '<div class="fq-kpi" title="costo_fijo en nodos_centros.csv (usado por facility_location.py) vs COSTO_FIJO_CENTRO_FRIO = $5M en EvaluadorEscenarios">' +
+                '<div class="fq-kpi-lbl">Costo Fijo Mensual</div>' +
+                '<div class="fq-kpi-val">' + costoLabel + '</div>' +
+                '<div class="fq-kpi-sub">' + costoSub + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="fq-bullets">' +
+              '<div><strong>Origen:</strong> ' + d.origen + '</div>' +
+              '<div><strong>Filtro:</strong> <code>' + d.filtro + '</code></div>' +
+              '<div><strong>Clave:</strong> ' + d.clave + '</div>' +
+            '</div>' +
+            '<button type="button" class="fq-cta" onclick="window.abrirCalculoFLP(\\'' + d.id + '\\')">' +
+              'Ver cálculo, variables y fórmulas completas →' +
+            '</button>';
+          card.classList.add('open');
+          ajustarPanelesFolium();
+        }};
+
+        window.seleccionarCandidatoQuick = function (candId) {{
+          var ref = getMapAndLayer();
+          var d = QUICK_FLP[candId];
+          window.mostrarFichaRapidaFLP(candId);
+          if (ref.map && d) {{
+            var z = candId === 'F03' ? 13 : 14;
+            ref.map.flyTo([d.lat, d.lon], z, {{ duration: 0.55 }});
+          }}
+        }};
+
+        window.toggleCentrosFrio = function (mostrar) {{
+          var ref = getMapAndLayer();
+          if (!ref.map || !ref.layer) return;
+          if (mostrar) {{
+            if (!ref.map.hasLayer(ref.layer)) ref.map.addLayer(ref.layer);
+          }} else {{
+            if (ref.map.hasLayer(ref.layer)) ref.map.removeLayer(ref.layer);
+          }}
+        }};
+
+        window.toggleCandidatosFrio = function (mostrar) {{
+          var ref = getMapAndLayer();
+          if (!ref.map || !ref.candLayer) return;
+          if (mostrar) {{
+            if (!ref.map.hasLayer(ref.candLayer)) ref.map.addLayer(ref.candLayer);
+            if (CAND_DATA.length) {{
+              var pts = CAND_DATA.map(function (c) {{ return [c.lat, c.lon]; }});
+              ref.map.fitBounds(pts, {{ padding: [70, 70], maxZoom: 12 }});
+            }}
+            window.mostrarFichaRapidaFLP('F02');
+          }} else {{
+            if (ref.map.hasLayer(ref.candLayer)) ref.map.removeLayer(ref.candLayer);
+            window.cerrarFichaRapidaFLP();
+          }}
+        }};
+
+        window.verTodosCentrosFrio = function () {{
+          var ref = getMapAndLayer();
+          if (!ref.map || !FRIO_DATA.length) return;
+          var chk = document.getElementById('chk-centros-frio');
+          if (chk) chk.checked = true;
+          window.toggleCentrosFrio(true);
+          var pts = FRIO_DATA.map(function (f) {{ return [f.lat, f.lon]; }});
+          ref.map.fitBounds(pts, {{ padding: [70, 70], maxZoom: 12 }});
+          window.mostrarFichaRapidaFLP('F02');
+        }};
+
+        window.enfocarCentroFrio = function (idFrio) {{
+          var ref = getMapAndLayer();
+          if (!ref.map) return;
+          var item = FRIO_DATA.find(function (f) {{ return f.id === idFrio; }});
+          if (!item) return;
+          var chk = document.getElementById('chk-centros-frio');
+          if (chk) chk.checked = true;
+          window.toggleCentrosFrio(true);
+          var z = item.id === 'F03' ? 13 : 14;
+          ref.map.flyTo([item.lat, item.lon], z, {{ duration: 0.7 }});
+          var mk = window[item.marker_var];
+          if (mk && typeof mk.openPopup === 'function') {{
+            setTimeout(function () {{ mk.openPopup(); }}, 350);
+          }}
+          window.mostrarFichaRapidaFLP(idFrio);
+        }};
+
+        function sincronizarEventosMapa() {{
+          var ref = getMapAndLayer();
+          if (!ref.map) return;
+          ref.map.on('overlayadd', function (e) {{
+            if (ref.layer && e.layer === ref.layer) {{
+              var chk = document.getElementById('chk-centros-frio');
+              if (chk) chk.checked = true;
+            }}
+            if (ref.candLayer && e.layer === ref.candLayer) {{
+              var chkC = document.getElementById('chk-candidatos-frio');
+              if (chkC) chkC.checked = true;
+            }}
+          }});
+          ref.map.on('overlayremove', function (e) {{
+            if (ref.layer && e.layer === ref.layer) {{
+              var chk = document.getElementById('chk-centros-frio');
+              if (chk) chk.checked = false;
+            }}
+            if (ref.candLayer && e.layer === ref.candLayer) {{
+              var chkC = document.getElementById('chk-candidatos-frio');
+              if (chkC) chkC.checked = false;
+            }}
+          }});
+        }}
+
+        function ajustarPanelesFolium() {{
+          if (window.innerHeight < 120) return;
+          var title = document.getElementById('folium-title-card');
+          var frio = document.getElementById('folium-frio-card');
+          var quick = document.getElementById('folium-frio-quickcard');
+          var itin = document.getElementById('folium-itin-card');
+          var legend = document.getElementById('folium-legend-card');
+          var zoom = document.querySelector('.leaflet-control-zoom');
+          var layers = document.querySelector('.leaflet-control-layers');
+
+          // 1. Apilar limpiamente panel izquierdo: Título/Zoom -> Centros de Frío -> Itinerarios
+          var cursorY = 0;
+          if (title) cursorY = Math.max(cursorY, title.getBoundingClientRect().bottom);
+          if (zoom) cursorY = Math.max(cursorY, zoom.getBoundingClientRect().bottom);
+
+          var frioTop = 86;
+          if (frio && cursorY > 20) {{
+            frioTop = Math.ceil(cursorY + 10);
+            frio.style.setProperty('top', frioTop + 'px', 'important');
+            cursorY = frio.getBoundingClientRect().bottom;
+          }}
+
+          // Alinear ficha rápida FLP a la derecha de #folium-frio-card sin solapar capas
+          if (quick) {{
+            var frioRight = frio ? Math.ceil(frio.getBoundingClientRect().right + 10) : 306;
+            quick.style.setProperty('top', frioTop + 'px', 'important');
+            quick.style.setProperty('left', frioRight + 'px', 'important');
+          }}
+
+          if (itin && cursorY > 20) {{
+            var itinTop = Math.ceil(cursorY + 10);
+            itin.style.setProperty('top', itinTop + 'px', 'important');
+            itin.style.maxHeight = Math.max(100, window.innerHeight - itinTop - 42) + 'px';
+          }}
+
+          // 2. Evitar superposición derecha: control de capas siempre 14px arriba de la leyenda
+          if (layers && legend) {{
+            var layersRect = layers.getBoundingClientRect();
+            var legendRect = legend.getBoundingClientRect();
+            if (legendRect.top > 0 && layersRect.height > 0) {{
+              var disp = Math.floor(legendRect.top - layersRect.top - 14);
+              if (disp > 90) {{
+                layers.style.maxHeight = disp + 'px';
+                layers.style.overflowY = 'auto';
+              }}
+            }}
+          }}
+        }}
+
+        window.addEventListener('load', function () {{
+          sincronizarEventosMapa();
+          ajustarPanelesFolium();
+          setTimeout(ajustarPanelesFolium, 200);
+          setTimeout(ajustarPanelesFolium, 700);
+        }});
+        window.addEventListener('resize', ajustarPanelesFolium);
+        document.addEventListener('toggle', ajustarPanelesFolium, true);
+        if (typeof ResizeObserver !== 'undefined') {{
+          var ro = new ResizeObserver(function () {{
+            ajustarPanelesFolium();
+          }});
+          ro.observe(document.documentElement);
+        }}
+      }})();
+    </script>
     """
     mapa.get_root().html.add_child(folium.Element(titulo_html))
 
@@ -629,29 +1416,27 @@ def _agregar_leyenda(mapa: folium.Map) -> None:
         ("#1565C0", "Fluvial (punteada)", "10 8"), ("#757575", "Acceso local", None),
         ("#E65100", "Terrestre", None), ("#1E88E5", "Río real", None),
     ]
-    h = ('<div id="folium-legend-card" style="position:fixed; bottom:30px; right:10px; z-index:1000;'
-         'background:white; color:#1d1d1f; padding:12px 16px; border-radius:8px;'
-         'box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:Arial;'
-         'font-size:12px; line-height:20px;"><b>Leyenda</b><br>')
+    h = ('<div id="folium-legend-card">'
+         '<details open><summary><b>Leyenda</b></summary><div style="margin-top:4px;">')
     for c, l in nodos:
-        h += (f'<span style="display:inline-block;width:12px;height:12px;'
+        h += (f'<span style="display:inline-block;width:11px;height:11px;'
               f'background:{c};border-radius:50%;margin-right:6px;'
               f'vertical-align:middle;"></span>{l}<br>')
     h += '<b>Vías</b><br>'
     for c, l, d in vias:
         borde = "dashed" if d else "solid"
-        h += (f'<span style="display:inline-block;width:22px;height:0;'
+        h += (f'<span style="display:inline-block;width:20px;height:0;'
               f'border-top:3px {borde} {c};margin-right:6px;'
               f'vertical-align:middle;"></span>{l}<br>')
     h += ('<b>Zonas</b><br>'
-          '<span style="display:inline-block;width:12px;height:12px;'
+          '<span style="display:inline-block;width:11px;height:11px;'
           'background:rgba(251,140,0,.35);border:1px solid #FB8C00;'
           'border-radius:50%;margin-right:6px;vertical-align:middle;"></span>'
           'Deterioro ×1.5 (r=1.5 km)<br>'
-          '<span style="display:inline-block;width:12px;height:12px;'
+          '<span style="display:inline-block;width:11px;height:11px;'
           'background:rgba(67,160,71,.35);border:2px dashed #D32F2F;'
           'border-radius:50%;margin-right:6px;vertical-align:middle;"></span>'
-          'Hábitat restringido (r=2 km)<br></div>')
+          'Hábitat restringido (r=2 km)</div></details></div>')
     mapa.get_root().html.add_child(folium.Element(h))
 
 
@@ -667,10 +1452,7 @@ def _agregar_panel_itinerarios(mapa, grafo, itinerarios) -> None:
             f"<td align='right'>{it.perdida_pct:.1f}%</td></tr>"
         )
     h = (
-        '<div id="folium-itin-card" style="position:fixed; top:80px; left:10px; z-index:1000;'
-        'background:white; color:#1d1d1f; padding:8px 12px; border-radius:8px;'
-        'box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:Arial;'
-        'font-size:11px; max-height:60vh; overflow:auto;">'
+        '<div id="folium-itin-card">'
         '<details open><summary><b>📋 Itinerarios por punto de pesca</b></summary>'
         '<table style="border-collapse:collapse;margin-top:4px;color:#1d1d1f;" cellpadding="3">'
         '<tr style="background:#eee;color:#1d1d1f;"><th>Origen</th><th>Acopio</th>'

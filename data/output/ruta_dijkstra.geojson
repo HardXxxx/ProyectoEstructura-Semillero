@@ -1,0 +1,171 @@
+{
+  "type": "FeatureCollection",
+  "name": "Ruta Óptima: ASOPESGA - Alto Neblinas → Bogotá",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -72.12,
+            4.35
+          ],
+          [
+            -72.083,
+            4.313
+          ],
+          [
+            -72.0826,
+            4.3128
+          ],
+          [
+            -72.955,
+            4.0862
+          ],
+          [
+            -74.059,
+            4.6615
+          ]
+        ]
+      },
+      "properties": {
+        "nombre": "Ruta Óptima: ASOPESGA - Alto Neblinas → Bogotá",
+        "tipo": "ruta_completa",
+        "origen": "P01",
+        "destino": "V_BOG1",
+        "num_tramos": 4,
+        "distancia_km": 295.5,
+        "tiempo_horas": 6.78,
+        "costo_cop": 1034250.0,
+        "riesgo_termico_max": 0.3,
+        "perdida_estimada_pct": 33.39,
+        "nodos_recorridos": "P01 → M03 → F02 → F03 → V_BOG1"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -72.12,
+            4.35
+          ],
+          [
+            -72.083,
+            4.313
+          ]
+        ]
+      },
+      "properties": {
+        "nombre": "Tramo 1: ASOPESGA - Alto Neblinas → Muelle Puerto Gaitán",
+        "tipo": "tramo",
+        "origen": "P01",
+        "destino": "M03",
+        "origen_nombre": "ASOPESGA - Alto Neblinas",
+        "destino_nombre": "Muelle Puerto Gaitán",
+        "distancia_km": 6.0,
+        "tiempo_horas": 0.4,
+        "costo_cop": 21000,
+        "riesgo_termico": 0.18,
+        "estado_via": "regular",
+        "tipo_via": "fluvial",
+        "perdida_estimada_pct": 3.41
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -72.083,
+            4.313
+          ],
+          [
+            -72.0826,
+            4.3128
+          ]
+        ]
+      },
+      "properties": {
+        "nombre": "Tramo 2: Muelle Puerto Gaitán → Centro Frío Puerto Gaitán",
+        "tipo": "tramo",
+        "origen": "M03",
+        "destino": "F02",
+        "origen_nombre": "Muelle Puerto Gaitán",
+        "destino_nombre": "Centro Frío Puerto Gaitán",
+        "distancia_km": 1.5,
+        "tiempo_horas": 0.08,
+        "costo_cop": 5250,
+        "riesgo_termico": 0.03,
+        "estado_via": "buena",
+        "tipo_via": "acceso_local",
+        "perdida_estimada_pct": 0.37
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -72.0826,
+            4.3128
+          ],
+          [
+            -72.955,
+            4.0862
+          ]
+        ]
+      },
+      "properties": {
+        "nombre": "Tramo 3: Centro Frío Puerto Gaitán → Centro Frío Puerto López",
+        "tipo": "tramo",
+        "origen": "F02",
+        "destino": "F03",
+        "origen_nombre": "Centro Frío Puerto Gaitán",
+        "destino_nombre": "Centro Frío Puerto López",
+        "distancia_km": 126.0,
+        "tiempo_horas": 2.5,
+        "costo_cop": 441000,
+        "riesgo_termico": 0.3,
+        "estado_via": "regular",
+        "tipo_via": "terrestre",
+        "perdida_estimada_pct": 13.27
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -72.955,
+            4.0862
+          ],
+          [
+            -74.059,
+            4.6615
+          ]
+        ]
+      },
+      "properties": {
+        "nombre": "Tramo 4: Centro Frío Puerto López → Buceo y Pesca",
+        "tipo": "tramo",
+        "origen": "F03",
+        "destino": "V_BOG1",
+        "origen_nombre": "Centro Frío Puerto López",
+        "destino_nombre": "Buceo y Pesca",
+        "distancia_km": 162.0,
+        "tiempo_horas": 3.8,
+        "costo_cop": 567000,
+        "riesgo_termico": 0.2,
+        "estado_via": "buena",
+        "tipo_via": "terrestre",
+        "perdida_estimada_pct": 16.34
+      }
+    }
+  ]
+}

@@ -41,6 +41,7 @@ htmlcov/
 # Herramientas internas de agentes IA y borradores locales (se mantienen en local, no en GitHub)
 .agents/
 .claude/
+.playwright/
 .playwright-cli/
 .playwright-mcp/
 skills-lock.json
@@ -59,8 +60,18 @@ data/output/*
 !data/output/mapa_interactivo.html
 !data/output/rutas_cache.json
 !data/output/grafo_logistico.png
+!data/output/mapa_geografico.png
+!data/output/tabla_hash_adyacencia.png
+!data/output/nodos_resultado.csv
+!data/output/aristas_resultado.csv
+!data/output/nodos_red.geojson
+!data/output/ruta_dijkstra.geojson
 !data/output/Informe_Final_Cadena_Frio_Puerto_Gaitan.docx
 !data/output/Informe_Final_Cadena_Frio_Puerto_Gaitan.pdf
+!data/output/Documento_Completo_RedCOLSI_Cadena_Frio_Puerto_Gaitan.docx
+!data/output/Documento_Completo_RedCOLSI_Cadena_Frio_Puerto_Gaitan.pdf
+!data/output/Formato_Inscripcion_RedCOLSI_Cadena_Frio_Puerto_Gaitan.docx
+!data/output/Formato_Inscripcion_RedCOLSI_Cadena_Frio_Puerto_Gaitan.pdf
 
 # Logs
 *.log
